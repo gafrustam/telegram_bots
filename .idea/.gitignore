@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+*.dylib
+
+# Виртуальные окружения
+.venv/
+venv/
+env/
+ENV/
+
+# Сборки/пакеты
+build/
+dist/
+*.egg-info/
+
+# Тестовые и кэш
+.pytest_cache/
+.tox/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Логи и временные
+*.log
+logs/
+
+# Секреты/настройки
+.env
+.env.*
+*.sqlite3
+
+# IDE
+.idea/
+*.iml
+.shelf/
+workspace.xml
+.vscode/
+
+# ОС
+.DS_Store
+Thumbs.db
