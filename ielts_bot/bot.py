@@ -272,16 +272,15 @@ async def _send_question(message: Message, state: FSMContext, index: int) -> Non
         await bot.send_voice(
             chat_id=message.chat.id,
             voice=voice_file,
-            caption=f"Вопрос {index + 1}/{total}",
+            caption=f"Вопрос {index + 1}/{total}\n🎤 Ответьте голосовым сообщением.",
         )
     except Exception:
         logger.exception("TTS failed, sending text only")
-
-    await message.answer(
-        f"❓ <i>{question}</i>\n\n"
-        f"🎤 Ответьте голосовым сообщением.",
-        parse_mode=ParseMode.HTML,
-    )
+        await message.answer(
+            f"❓ <i>{question}</i>\n\n"
+            f"🎤 Ответьте голосовым сообщением.",
+            parse_mode=ParseMode.HTML,
+        )
 
 
 # ── Part 1 voice handler ────────────────────────────────
