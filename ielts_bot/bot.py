@@ -19,18 +19,28 @@ from aiogram.types import (
     Message,
 )
 
+import database
 from assessor import assess_part1, assess_part2, assess_part3, _get_duration_seconds
-from formatter import format_assessment, format_error
+from formatter import (
+    format_assessment,
+    format_error,
+    format_user_stats,
+    format_admin_overview,
+    format_admin_daily,
+    format_admin_top_users,
+    format_admin_parts,
+)
 from keyboards import (
     PART1_BTN,
     PART2_BTN,
     PART3_BTN,
+    admin_nav_keyboard,
     main_menu_keyboard,
     results_keyboard,
     topic_keyboard,
 )
 from questions import generate_session
-from states import ResultAction, SpeakingStates, TopicAction
+from states import AdminAction, ResultAction, SpeakingStates, TopicAction
 from tts import text_to_voice
 
 logging.basicConfig(
@@ -44,6 +54,8 @@ storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 router = Router()
 dp.include_router(router)
+
+ADMIN_USER_ID = int(os.getenv("ADMIN_USER_ID", "0")) or None
 
 WELCOME_TEXT = (
     "🎓 <b>IELTS Speaking Practice</b>\n"
@@ -80,8 +92,9 @@ HELP_TEXT = (
     "  • Отвечайте развёрнуто\n"
     "\n"
     "<b>Команды:</b>\n"
-    "  /start — Главное меню\n"
-    "  /help  — Эта справка"
+    "  /start   — Главное меню\n"
+    "  /help    — Эта справка\n"
+    "  /mystats — Моя статистика"
 )
 
 PROCESSING_TEXT = (
@@ -104,6 +117,13 @@ PART_NAMES = {
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext) -> None:
     await state.clear()
+    user = message.from_user
+    await database.upsert_user(
+        user_id=user.id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
+    )
     await message.answer(
         WELCOME_TEXT,
         parse_mode=ParseMode.HTML,
@@ -117,6 +137,108 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
 @router.message(Command("help"))
 async def cmd_help(message: Message) -> None:
     await message.answer(HELP_TEXT, parse_mode=ParseMode.HTML)
+
+
+# ── /mystats ─────────────────────────────────────────────
+
+@router.message(Command("mystats"))
+async def cmd_mystats(message: Message) -> None:
+    if not database.is_available():
+        await message.answer(
+            "⚠️ База данных недоступна. Попробуйте позже.",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
+    stats = await database.get_user_stats(message.from_user.id)
+    if stats is None:
+        await message.answer(
+            "📊 <b>Статистика</b>\n\n"
+            "У вас пока нет завершённых сессий.\n"
+            "Нажмите /start, чтобы начать тренировку!",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    recent = await database.get_user_recent_assessments(message.from_user.id)
+    text = format_user_stats(stats, recent)
+    await message.answer(text, parse_mode=ParseMode.HTML)
+
+
+# ── /admin ───────────────────────────────────────────────
+
+def _is_admin(user_id: int) -> bool:
+    return ADMIN_USER_ID is not None and user_id == ADMIN_USER_ID
+
+
+@router.message(Command("admin"))
+async def cmd_admin(message: Message) -> None:
+    if not _is_admin(message.from_user.id):
+        return
+    if not database.is_available():
+        await message.answer("⚠️ База данных недоступна.")
+        return
+
+    await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
+    overview = await database.get_admin_overview()
+    await message.answer(
+        format_admin_overview(overview),
+        parse_mode=ParseMode.HTML,
+        reply_markup=admin_nav_keyboard("overview"),
+    )
+
+
+@router.callback_query(AdminAction.filter(F.page == "overview"))
+async def admin_overview(callback: CallbackQuery) -> None:
+    if not _is_admin(callback.from_user.id):
+        return
+    overview = await database.get_admin_overview()
+    await callback.message.edit_text(
+        format_admin_overview(overview),
+        parse_mode=ParseMode.HTML,
+        reply_markup=admin_nav_keyboard("overview"),
+    )
+    await callback.answer()
+
+
+@router.callback_query(AdminAction.filter(F.page == "daily"))
+async def admin_daily(callback: CallbackQuery) -> None:
+    if not _is_admin(callback.from_user.id):
+        return
+    rows = await database.get_admin_daily_stats(7)
+    await callback.message.edit_text(
+        format_admin_daily(rows),
+        parse_mode=ParseMode.HTML,
+        reply_markup=admin_nav_keyboard("daily"),
+    )
+    await callback.answer()
+
+
+@router.callback_query(AdminAction.filter(F.page == "top_users"))
+async def admin_top_users(callback: CallbackQuery) -> None:
+    if not _is_admin(callback.from_user.id):
+        return
+    rows = await database.get_admin_top_users(10)
+    await callback.message.edit_text(
+        format_admin_top_users(rows),
+        parse_mode=ParseMode.HTML,
+        reply_markup=admin_nav_keyboard("top_users"),
+    )
+    await callback.answer()
+
+
+@router.callback_query(AdminAction.filter(F.page == "parts"))
+async def admin_parts(callback: CallbackQuery) -> None:
+    if not _is_admin(callback.from_user.id):
+        return
+    rows = await database.get_admin_part_distribution()
+    await callback.message.edit_text(
+        format_admin_parts(rows),
+        parse_mode=ParseMode.HTML,
+        reply_markup=admin_nav_keyboard("parts"),
+    )
+    await callback.answer()
 
 
 # ── Part selection ───────────────────────────────────────
@@ -221,6 +343,16 @@ async def handle_another_topic(callback: CallbackQuery, state: FSMContext) -> No
 async def handle_accept_topic(callback: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
     part = data["part"]
+
+    # Create DB session
+    db_session_id = await database.create_session(
+        user_id=callback.from_user.id,
+        part=part,
+        topic=data["topic"],
+        questions=data.get("questions") or None,
+        cue_card=data.get("cue_card") or None,
+    )
+    await state.update_data(db_session_id=db_session_id)
 
     await callback.answer()
     await callback.message.edit_reply_markup(reply_markup=None)
@@ -351,6 +483,7 @@ async def _run_assessment(message: Message, state: FSMContext) -> None:
 
     data = await state.get_data()
     part = data["part"]
+    db_session_id = data.get("db_session_id")
 
     try:
         await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
@@ -380,6 +513,16 @@ async def _run_assessment(message: Message, state: FSMContext) -> None:
                 )
 
         response_text = format_assessment(result)
+
+        # Save to database
+        audio_total = sum(data.get("audio_durations", []))
+        await database.complete_session(db_session_id, audio_total)
+        await database.save_assessment(
+            session_id=db_session_id,
+            user_id=message.from_user.id,
+            result=result,
+        )
+
         await state.set_state(SpeakingStates.viewing_results)
 
         if len(response_text) <= 4096:
@@ -396,6 +539,7 @@ async def _run_assessment(message: Message, state: FSMContext) -> None:
 
     except Exception:
         logger.exception("Error during assessment")
+        await database.fail_session(db_session_id)
         await status_msg.edit_text(
             format_error("Не удалось выполнить оценку. Попробуйте ещё раз."),
             parse_mode=ParseMode.HTML,
@@ -414,10 +558,20 @@ async def handle_retry(callback: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
     part = data["part"]
 
+    # Create a new DB session for the retry
+    db_session_id = await database.create_session(
+        user_id=callback.from_user.id,
+        part=part,
+        topic=data["topic"],
+        questions=data.get("questions") or None,
+        cue_card=data.get("cue_card") or None,
+    )
+
     await state.update_data(
         audio_file_ids=[],
         audio_durations=[],
         current_q_index=0,
+        db_session_id=db_session_id,
     )
 
     await callback.answer()
@@ -515,13 +669,18 @@ async def _set_bot_commands() -> None:
     await bot.set_my_commands([
         BotCommand(command="start", description="Главное меню"),
         BotCommand(command="help", description="Справка"),
+        BotCommand(command="mystats", description="Моя статистика"),
     ])
 
 
 async def main() -> None:
     logger.info("Starting IELTS Speaking Practice bot...")
+    await database.init_db()
     await _set_bot_commands()
-    await dp.start_polling(bot)
+    try:
+        await dp.start_polling(bot)
+    finally:
+        await database.close_db()
 
 
 if __name__ == "__main__":

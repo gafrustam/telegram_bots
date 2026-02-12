@@ -18,3 +18,7 @@ class TopicAction(CallbackData, prefix="topic"):
 
 class ResultAction(CallbackData, prefix="result"):
     action: str  # "retry" or "menu"
+
+
+class AdminAction(CallbackData, prefix="admin"):
+    page: str  # "overview", "daily", "top_users", "parts"

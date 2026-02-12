@@ -5,7 +5,7 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
 )
 
-from states import TopicAction, ResultAction
+from states import TopicAction, ResultAction, AdminAction
 
 PART1_BTN = "Part 1 — Interview"
 PART2_BTN = "Part 2 — Long Turn"
@@ -47,3 +47,21 @@ def results_keyboard() -> InlineKeyboardMarkup:
             callback_data=ResultAction(action="menu").pack(),
         )],
     ])
+
+
+def admin_nav_keyboard(current: str) -> InlineKeyboardMarkup:
+    pages = [
+        ("📊 Обзор", "overview"),
+        ("📅 По дням", "daily"),
+        ("👥 Топ", "top_users"),
+        ("📋 Разделы", "parts"),
+    ]
+    row = [
+        InlineKeyboardButton(
+            text=label,
+            callback_data=AdminAction(page=page).pack(),
+        )
+        for label, page in pages
+        if page != current
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=[row])
