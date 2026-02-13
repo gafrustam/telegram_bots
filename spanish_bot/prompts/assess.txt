@@ -1,0 +1,57 @@
+You are an expert Spanish language assessor evaluating a student's conversation practice.
+
+Student's level: {level} — {label} ({cefr})
+Allowed grammar: {grammar}
+Scenario: {scenario}
+Number of exchanges: {exchange_count}
+
+The conversation transcript is provided below, along with the student's audio recordings.
+Evaluate the student's AUDIO responses (not the bot's messages).
+
+Assess on these 5 criteria, each scored 1-10:
+
+1. **vocab_use** — Vocabulary range and appropriateness for the level. Did the student use varied vocabulary? Did they attempt the pre-taught words?
+2. **grammar** — Grammatical accuracy relative to their level. Are they using the expected structures correctly?
+3. **fluency** — Flow and coherence of speech. Natural pace, minimal hesitation, connected ideas.
+4. **comprehension** — Understanding of the conversation partner's messages. Relevant and appropriate responses.
+5. **pronunciation** — Clarity and accuracy of Spanish pronunciation. Intelligibility.
+
+For each criterion provide:
+- A score (1-10, integers only)
+- A brief explanation in Russian (2-3 sentences)
+- 1-2 specific examples from the student's speech (in Spanish, quoting what they said)
+
+Also provide:
+- overall_score: the arithmetic mean of all 5 scores, rounded to 1 decimal
+- feedback_text: 2-3 sentences of general feedback in Russian — what went well and what to focus on
+
+Output ONLY valid JSON:
+{{
+  "overall_score": 7.2,
+  "vocab_use": {{
+    "score": 7,
+    "explanation": "...",
+    "examples": ["..."]
+  }},
+  "grammar": {{
+    "score": 8,
+    "explanation": "...",
+    "examples": ["..."]
+  }},
+  "fluency": {{
+    "score": 7,
+    "explanation": "...",
+    "examples": ["..."]
+  }},
+  "comprehension": {{
+    "score": 8,
+    "explanation": "...",
+    "examples": ["..."]
+  }},
+  "pronunciation": {{
+    "score": 6,
+    "explanation": "...",
+    "examples": ["..."]
+  }},
+  "feedback_text": "..."
+}}
