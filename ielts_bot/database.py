@@ -276,7 +276,11 @@ async def get_admin_overview() -> dict | None:
         SELECT
             (SELECT count(*) FROM users) AS total_users,
             (SELECT count(*) FROM users
+             WHERE created_at > now() - interval '24 hours') AS new_users_24h,
+            (SELECT count(*) FROM users
              WHERE created_at > now() - interval '7 days') AS new_users_7d,
+            (SELECT count(*) FROM users
+             WHERE created_at > now() - interval '30 days') AS new_users_30d,
             (SELECT count(*) FROM users
              WHERE last_active > now() - interval '7 days') AS active_7d,
             (SELECT count(*) FROM users
@@ -289,7 +293,7 @@ async def get_admin_overview() -> dict | None:
             (SELECT count(*) FROM assessments) AS total_assessments,
             (SELECT round(avg(overall_band)::numeric, 1) FROM assessments) AS global_avg_band,
             (SELECT max(overall_band) FROM assessments) AS best_band,
-            (SELECT round(sum(audio_duration_total) / 60.0, 1)
+            (SELECT round((sum(audio_duration_total) / 60.0)::numeric, 1)
              FROM sessions WHERE status = 'completed') AS total_audio_min,
             (SELECT round(avg(audio_duration_total)::numeric, 0)
              FROM sessions WHERE status = 'completed') AS avg_audio_sec,

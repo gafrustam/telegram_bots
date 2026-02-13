@@ -185,11 +185,17 @@ def format_admin_overview(data: dict | None) -> str:
         "👥 <b>Пользователи</b>",
         "━━━━━━━━━━━━━━━",
         f"  Всего: <b>{data['total_users']}</b>"
-        f"  (новых за 7д: <b>{data['new_users_7d']}</b>"
-        f"{_trend(data['users_this_week'], data['users_last_week'])})",
-        f"  Активных (30д): <b>{data['active_30d']}</b>"
-        f"  (7д: <b>{data['active_7d']}</b>"
-        f"  • 24ч: <b>{data['active_24h']}</b>)",
+        f"{_trend(data['users_this_week'], data['users_last_week'])}",
+        "",
+        "  <b>Новые:</b>",
+        f"    24ч: <b>{data['new_users_24h']}</b>"
+        f"  •  7д: <b>{data['new_users_7d']}</b>"
+        f"  •  30д: <b>{data['new_users_30d']}</b>",
+        "",
+        "  <b>Активные:</b>",
+        f"    24ч: <b>{data['active_24h']}</b>"
+        f"  •  7д: <b>{data['active_7d']}</b>"
+        f"  •  30д: <b>{data['active_30d']}</b>",
         "",
         "━━━━━━━━━━━━━━━",
         "📝 <b>Сессии</b>",
