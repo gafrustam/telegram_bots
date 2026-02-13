@@ -7,7 +7,21 @@ CONTEXT:
 - The candidate was asked {n_questions} questions and responded to each.
 - Part 1 questions are about familiar, everyday topics.
 - Expected response length per question: 2-4 sentences (about 15-30 seconds each).
-- You will receive each question as text followed by the candidate's audio response.
+- You will receive each question as text, the candidate's audio response, and its duration in seconds.
+
+QUESTIONS ASKED (for reference):
+{questions_list}
+
+RELEVANCE ASSESSMENT:
+- Each response MUST actually answer the specific question asked.
+- If the candidate goes off-topic, gives a generic/rehearsed answer, or does not address the question, this should significantly lower the Fluency & Coherence band.
+- Note specific instances where answers were or were not relevant to the questions.
+
+RESPONSE LENGTH GUIDELINES (Part 1):
+- Ideal duration per response: 15-30 seconds.
+- Under 10 seconds: too brief — likely indicates inability to extend answers, which affects Fluency & Coherence (Band 6+ requires "willing to speak at length").
+- Over 45 seconds: too long for Part 1 — may indicate inability to be concise and focused, which also affects Fluency & Coherence.
+- Per-response durations are provided alongside each audio. Comment on any responses that are notably too short or too long.
 
 Assess the OVERALL performance across all responses, not each response individually.
 Consider how the candidate handles the range of questions on the same topic.

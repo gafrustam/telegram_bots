@@ -77,21 +77,29 @@ def _format_duration(seconds: float) -> str:
     return f"{mins}:{secs:02d}"
 
 
-async def assess_part1(ogg_paths: list[str], questions: list[str], topic: str) -> dict:
+async def assess_part1(
+    ogg_paths: list[str], questions: list[str], topic: str,
+    durations: list[int] | None = None,
+) -> dict:
     """Assess IELTS Speaking Part 1 with multiple Q&A pairs."""
     return await _assess_multi_audio(
         ogg_paths, questions, topic,
         prompt_file="assess_part1.txt",
         n_questions=len(questions),
+        durations=durations,
     )
 
 
-async def assess_part3(ogg_paths: list[str], questions: list[str], topic: str) -> dict:
+async def assess_part3(
+    ogg_paths: list[str], questions: list[str], topic: str,
+    durations: list[int] | None = None,
+) -> dict:
     """Assess IELTS Speaking Part 3 with multiple Q&A pairs."""
     return await _assess_multi_audio(
         ogg_paths, questions, topic,
         prompt_file="assess_part3.txt",
         n_questions=len(questions),
+        durations=durations,
     )
 
 
@@ -101,12 +109,17 @@ async def _assess_multi_audio(
     topic: str,
     prompt_file: str,
     n_questions: int,
+    durations: list[int] | None = None,
 ) -> dict:
     """Assess multiple audio responses paired with questions."""
+    questions_list = "\n".join(
+        f"  {i + 1}. {q}" for i, q in enumerate(questions)
+    )
     system_prompt = _load_prompt(
         prompt_file,
         topic=topic,
         n_questions=str(n_questions),
+        questions_list=questions_list,
     )
 
     content_parts: list[dict] = []
@@ -116,9 +129,13 @@ async def _assess_multi_audio(
             await asyncio.to_thread(_convert_ogg_to_mp3, ogg_path, mp3_path)
             audio_b64 = _encode_mp3(mp3_path)
 
+            dur_info = ""
+            if durations and i < len(durations):
+                dur_info = f" (duration: {durations[i]} seconds)"
+
             content_parts.append({
                 "type": "text",
-                "text": f"Question {i + 1}: {question}",
+                "text": f"Question {i + 1}: {question}{dur_info}",
             })
             content_parts.append({
                 "type": "input_audio",

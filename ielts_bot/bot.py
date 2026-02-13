@@ -699,6 +699,7 @@ async def _run_assessment(message: Message, state: FSMContext) -> None:
             if part == 1:
                 result = await assess_part1(
                     ogg_paths, data["questions"], data["topic"],
+                    durations=data.get("audio_durations"),
                 )
             elif part == 2:
                 duration = await asyncio.to_thread(
@@ -710,6 +711,7 @@ async def _run_assessment(message: Message, state: FSMContext) -> None:
             else:
                 result = await assess_part3(
                     ogg_paths, data["questions"], data["topic"],
+                    durations=data.get("audio_durations"),
                 )
 
         response_text = format_assessment(result)

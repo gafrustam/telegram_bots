@@ -7,7 +7,21 @@ CONTEXT:
 - The candidate was asked {n_questions} abstract/analytical questions.
 - Part 3 requires extended responses with opinion justification, comparison, speculation, and abstract reasoning.
 - Expected response length per question: 3-6 sentences (about 30-60 seconds each).
-- You will receive each question as text followed by the candidate's audio response.
+- You will receive each question as text, the candidate's audio response, and its duration in seconds.
+
+QUESTIONS ASKED (for reference):
+{questions_list}
+
+RELEVANCE ASSESSMENT:
+- Each response MUST actually answer the specific question asked.
+- Part 3 questions require abstract reasoning — if the candidate gives only personal anecdotes without addressing the analytical aspect of the question, this should lower Fluency & Coherence.
+- If the candidate goes off-topic, gives a generic/rehearsed answer, or does not address the question, note this explicitly.
+
+RESPONSE LENGTH GUIDELINES (Part 3):
+- Ideal duration per response: 30-60 seconds.
+- Under 15 seconds: far too brief — indicates inability to develop ideas at length, directly impacting Fluency & Coherence (Band 6+ requires extended responses with reasoning).
+- Over 90 seconds: excessively long — may indicate inability to organize thoughts concisely, or rambling without clear structure.
+- Per-response durations are provided alongside each audio. Comment on any responses that are notably too short or too long.
 
 At Part 3 level, pay special attention to:
 - Ability to discuss abstract concepts (not just personal experience)
