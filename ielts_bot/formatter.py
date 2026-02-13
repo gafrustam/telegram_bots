@@ -119,9 +119,9 @@ def format_user_stats(stats: dict, recent: list[dict]) -> str:
         "━━━━━━━━━━━━━━━",
         "📋 <b>По разделам</b>",
         "━━━━━━━━━━━━━━━",
-        f"  Part 1: <b>{stats['part1_count']}</b> сессий",
-        f"  Part 2: <b>{stats['part2_count']}</b> сессий",
-        f"  Part 3: <b>{stats['part3_count']}</b> сессий",
+        f"  Part 1: <b>{stats['part1_count']}</b> сессий — ∅ <b>{_val(stats.get('avg_part1'))}</b>",
+        f"  Part 2: <b>{stats['part2_count']}</b> сессий — ∅ <b>{_val(stats.get('avg_part2'))}</b>",
+        f"  Part 3: <b>{stats['part3_count']}</b> сессий — ∅ <b>{_val(stats.get('avg_part3'))}</b>",
         "",
         "━━━━━━━━━━━━━━━",
         "🔬 <b>Средний балл по критериям</b>",
@@ -157,76 +157,185 @@ def format_user_stats(stats: dict, recent: list[dict]) -> str:
 
 # ── Admin formatting ────────────────────────────────────
 
+def _trend(current, previous) -> str:
+    if not current or not previous or previous == 0:
+        return ""
+    diff = current - previous
+    pct = round(100 * diff / previous)
+    if diff > 0:
+        return f" <i>(+{pct}%)</i>"
+    if diff < 0:
+        return f" <i>({pct}%)</i>"
+    return ""
+
+
 def format_admin_overview(data: dict | None) -> str:
     if not data:
         return "⚠️ Нет данных"
+
+    completed = data["completed_sessions"]
+    total_s = data["total_sessions"]
+    compl_pct = round(100 * completed / total_s) if total_s else 0
+    avg_sess_per_user = round(completed / data["active_7d"], 1) if data["active_7d"] else 0
+
     return "\n".join([
-        "🔧 <b>Панель администратора</b>",
+        "🔧 <b>Админ-панель — Обзор</b>",
         "",
         "━━━━━━━━━━━━━━━",
-        "📊 <b>Общая статистика</b>",
+        "👥 <b>Пользователи</b>",
         "━━━━━━━━━━━━━━━",
-        f"  Пользователей: <b>{data['total_users']}</b>",
-        f"  Активных (7 дней): <b>{data['active_7d']}</b>",
-        f"  Активных (24 часа): <b>{data['active_24h']}</b>",
+        f"  Всего: <b>{data['total_users']}</b>"
+        f"  (новых за 7д: <b>{data['new_users_7d']}</b>"
+        f"{_trend(data['users_this_week'], data['users_last_week'])})",
+        f"  Активных (30д): <b>{data['active_30d']}</b>"
+        f"  (7д: <b>{data['active_7d']}</b>"
+        f"  • 24ч: <b>{data['active_24h']}</b>)",
         "",
-        f"  Всего сессий: <b>{data['total_sessions']}</b>",
-        f"  Завершённых: <b>{data['completed_sessions']}</b>",
-        f"  Оценок: <b>{data['total_assessments']}</b>",
-        f"  Средний балл: <b>{_val(data['global_avg_band'])}</b>",
+        "━━━━━━━━━━━━━━━",
+        "📝 <b>Сессии</b>",
+        "━━━━━━━━━━━━━━━",
+        f"  Всего: <b>{total_s}</b>"
+        f"  (за 7д: <b>{data['sessions_this_week']}</b>"
+        f"{_trend(data['sessions_this_week'], data['sessions_last_week'])})",
+        f"  Завершено: <b>{completed}</b> ({compl_pct}%)"
+        f"  • Провалено: <b>{data['failed_sessions']}</b>",
+        f"  Ср. сессий / активный юзер (7д): <b>{avg_sess_per_user}</b>",
+        "",
+        "━━━━━━━━━━━━━━━",
+        "🎯 <b>Баллы и аудио</b>",
+        "━━━━━━━━━━━━━━━",
+        f"  Средний балл: <b>{_val(data['global_avg_band'])}</b>"
+        f"  • Лучший: <b>{_val(data['best_band'])}</b>",
+        f"  Аудио всего: <b>{_val(data['total_audio_min'])}</b> мин"
+        f"  • Ср. ответ: <b>{_val(data['avg_audio_sec'])}</b> сек",
     ])
 
 
-def format_admin_daily(rows: list[dict]) -> str:
+def format_admin_scores(summary: dict | None, parts: list[dict]) -> str:
+    if not summary or not summary.get("total"):
+        return "🔧 <b>Админ-панель — Баллы</b>\n\n<i>Нет данных</i>"
+
     lines = [
-        "🔧 <b>Панель администратора</b>",
+        "🔧 <b>Админ-панель — Баллы</b>",
         "",
         "━━━━━━━━━━━━━━━",
-        "📅 <b>Статистика по дням (7 дней)</b>",
+        "📊 <b>Глобальные показатели</b>",
         "━━━━━━━━━━━━━━━",
+        f"  Overall: <b>{_val(summary['avg_overall'])}</b>"
+        f"  (лучший: {_val(summary['best_overall'])}"
+        f"  • худший: {_val(summary['worst_overall'])})",
+        "",
+        f"  Fluency & Coherence: <b>{_val(summary['avg_fc'])}</b>",
+        f"  Lexical Resource: <b>{_val(summary['avg_lr'])}</b>",
+        f"  Grammar Range & Accuracy: <b>{_val(summary['avg_gra'])}</b>",
+        f"  Pronunciation: <b>{_val(summary['avg_pron'])}</b>",
     ]
-    for r in rows:
-        day = r["day"].strftime("%d.%m") if r["day"] else "?"
-        users = r["unique_users"]
-        sessions = r["sessions"]
-        band = _val(r["avg_band"])
-        lines.append(f"  {day} — 👤 {users}  📝 {sessions}  🎯 {band}")
+
+    if parts:
+        lines += [
+            "",
+            "━━━━━━━━━━━━━━━",
+            "📋 <b>По разделам</b>",
+            "━━━━━━━━━━━━━━━",
+        ]
+        for r in parts:
+            part = PART_NAMES.get(r["part"], f"Part {r['part']}")
+            total = r.get("cnt", 0)
+            completed = r.get("completed", 0)
+            audio = _val(r.get("audio_min"))
+            lines.append(
+                f"  {part}: <b>{completed}</b>/{total} сессий"
+                f"  • ∅ <b>{_val(r['avg_band'])}</b>"
+                f"  • {audio} мин"
+            )
+
     return "\n".join(lines)
 
 
-def format_admin_top_users(rows: list[dict]) -> str:
+def format_admin_users(rows: list[dict]) -> str:
     lines = [
-        "🔧 <b>Панель администратора</b>",
+        "🔧 <b>Админ-панель — Пользователи</b>",
         "",
         "━━━━━━━━━━━━━━━",
-        "👥 <b>Топ пользователей</b>",
+        "👥 <b>Топ по активности</b>",
         "━━━━━━━━━━━━━━━",
     ]
     for i, r in enumerate(rows, 1):
         name = _esc(r["first_name"] or "?")
-        uname = f" (@{_esc(r['username'])})" if r.get("username") else ""
+        uname = f" @{_esc(r['username'])}" if r.get("username") else ""
+        last = ""
+        if r.get("last_session"):
+            last = r["last_session"].strftime(" (%d.%m)")
         lines.append(
-            f"  {i}. {name}{uname} — "
-            f"{r['session_count']} сесс., "
-            f"∅ {_val(r['avg_band'])}, "
-            f"лучший {_val(r['best_band'])}"
+            f"  {i}. <b>{name}</b>{uname}\n"
+            f"      {r['session_count']} сесс."
+            f"  ∅ {_val(r['avg_band'])}"
+            f"  best {_val(r['best_band'])}"
+            f"  {_val(r.get('audio_min'))} мин{last}"
         )
     if not rows:
         lines.append("  <i>Нет данных</i>")
     return "\n".join(lines)
 
 
-def format_admin_parts(rows: list[dict]) -> str:
+def format_admin_outliers(data: dict) -> str:
     lines = [
-        "🔧 <b>Панель администратора</b>",
-        "",
-        "━━━━━━━━━━━━━━━",
-        "📋 <b>Распределение по разделам</b>",
-        "━━━━━━━━━━━━━━━",
+        "🔧 <b>Админ-панель — Выбросы</b>",
     ]
-    for r in rows:
-        part = PART_NAMES.get(r["part"], f"Part {r['part']}")
-        lines.append(f"  {part}: <b>{r['cnt']}</b> сессий, ∅ балл <b>{_val(r['avg_band'])}</b>")
-    if not rows:
-        lines.append("  <i>Нет данных</i>")
+
+    power = data.get("power_users", [])
+    if power:
+        lines += [
+            "",
+            "━━━━━━━━━━━━━━━",
+            "💪 <b>Power Users (5+ сессий или 10+ мин)</b>",
+            "━━━━━━━━━━━━━━━",
+        ]
+        for r in power:
+            name = _esc(r["first_name"] or "?")
+            uname = f" @{_esc(r['username'])}" if r.get("username") else ""
+            lines.append(
+                f"  {name}{uname}: "
+                f"{r['sessions']} сесс., "
+                f"{_val(r.get('audio_min'))} мин, "
+                f"∅ {_val(r['avg_band'])}"
+            )
+
+    top = data.get("top_scorers", [])
+    if top:
+        lines += [
+            "",
+            "━━━━━━━━━━━━━━━",
+            "🏆 <b>Лучшие результаты</b>",
+            "━━━━━━━━━━━━━━━",
+        ]
+        for r in top:
+            name = _esc(r["first_name"] or "?")
+            uname = f" @{_esc(r['username'])}" if r.get("username") else ""
+            part = PART_NAMES.get(r["part"], f"Part {r['part']}")
+            dt = r["created_at"].strftime("%d.%m")
+            lines.append(
+                f"  {name}{uname}: "
+                f"<b>{r['overall_band']}</b> — {part} «{_esc(r['topic'])}» ({dt})"
+            )
+
+    drops = data.get("dropoffs", [])
+    if drops:
+        lines += [
+            "",
+            "━━━━━━━━━━━━━━━",
+            "📉 <b>Высокий % недозавершений</b>",
+            "━━━━━━━━━━━━━━━",
+        ]
+        for r in drops:
+            name = _esc(r["first_name"] or "?")
+            uname = f" @{_esc(r['username'])}" if r.get("username") else ""
+            lines.append(
+                f"  {name}{uname}: "
+                f"{r['failed']}/{r['total']} провалено ({r['fail_pct']}%)"
+            )
+
+    if not power and not top and not drops:
+        lines.append("\n<i>Пока недостаточно данных для выбросов</i>")
+
     return "\n".join(lines)

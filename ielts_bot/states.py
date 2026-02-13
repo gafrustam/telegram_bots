@@ -6,6 +6,7 @@ class SpeakingStates(StatesGroup):
     choosing_part = State()
     choosing_topic = State()
     part1_answering = State()
+    part2_preparing = State()    # countdown before Part 2
     part2_answering = State()
     part3_answering = State()
     assessing = State()
@@ -21,4 +22,9 @@ class ResultAction(CallbackData, prefix="result"):
 
 
 class AdminAction(CallbackData, prefix="admin"):
-    page: str  # "overview", "daily", "top_users", "parts"
+    page: str  # "overview", "growth", "scores", "users", "usage", "outliers"
+
+
+class InterruptAction(CallbackData, prefix="interrupt"):
+    action: str  # "continue" or "new"
+    new_part: int

@@ -21,26 +21,30 @@ from aiogram.types import (
 
 import database
 from assessor import assess_part1, assess_part2, assess_part3, _get_duration_seconds
+import charts
 from formatter import (
     format_assessment,
     format_error,
     format_user_stats,
     format_admin_overview,
-    format_admin_daily,
-    format_admin_top_users,
-    format_admin_parts,
+    format_admin_scores,
+    format_admin_users,
+    format_admin_outliers,
 )
 from keyboards import (
+    ADMIN_BTN,
     PART1_BTN,
     PART2_BTN,
     PART3_BTN,
+    STATS_BTN,
     admin_nav_keyboard,
+    interrupt_keyboard,
     main_menu_keyboard,
     results_keyboard,
     topic_keyboard,
 )
 from questions import generate_session
-from states import AdminAction, ResultAction, SpeakingStates, TopicAction
+from states import AdminAction, InterruptAction, ResultAction, SpeakingStates, TopicAction
 from tts import text_to_voice
 
 logging.basicConfig(
@@ -55,22 +59,26 @@ dp = Dispatcher(storage=storage)
 router = Router()
 dp.include_router(router)
 
-ADMIN_USER_ID = int(os.getenv("ADMIN_USER_ID", "0")) or None
+ADMIN_USERNAME = (os.getenv("ADMIN_USERNAME") or "").lstrip("@").lower() or None
+_admin_ids: set[int] = set()
 
 WELCOME_TEXT = (
     "🎓 <b>IELTS Speaking Practice</b>\n"
     "\n"
-    "Я помогу вам подготовиться к IELTS Speaking.\n"
-    "Выберите часть экзамена для тренировки:\n"
+    "В этом боте ты сможешь тренировать свой спикинг.\n"
     "\n"
-    "<b>Part 1</b> — Interview (вопросы на повседневные темы)\n"
-    "<b>Part 2</b> — Long Turn (монолог 2 минуты по карточке)\n"
-    "<b>Part 3</b> — Discussion (обсуждение абстрактных тем)\n"
+    "Официальный экзамен состоит из 3 частей:\n"
+    "🗣 <b>Part 1</b> — Interview (вопросы на повседневные темы)\n"
+    "🎙 <b>Part 2</b> — Long Turn (монолог 2 минуты по карточке)\n"
+    "💬 <b>Part 3</b> — Discussion (обсуждение абстрактных тем)\n"
     "\n"
-    "Я задам вопросы, оценю ваши ответы по официальным\n"
-    "IELTS Band Descriptors и дам рекомендации.\n"
+    "Здесь ты можешь потренировать их по отдельности.\n"
+    "Попробуй ответить на вопросы, получи обратную связь,\n"
+    "проанализируй и попробуй ещё раз — отточи свой ответ\n"
+    "до совершенства. Это существенно поднимет твою оценку\n"
+    "на экзамене! 🚀\n"
     "\n"
-    "👇 <b>Выберите раздел в меню ниже</b>"
+    "👇 <b>Выбери раздел в меню ниже</b>"
 )
 
 HELP_TEXT = (
@@ -111,6 +119,47 @@ PART_NAMES = {
     3: "Part 3 — Discussion",
 }
 
+PART_INSTRUCTIONS = {
+    1: (
+        "Эта часть имитирует короткое интервью с экзаменатором "
+        "на знакомые повседневные темы: дом, работа, учёба, "
+        "хобби, путешествия и т.д.\n"
+        "\n"
+        "Формат — диалог: экзаменатор задаёт вопрос, ты отвечаешь. "
+        "Старайся говорить естественно и развёрнуто "
+        "(<b>~20–30 секунд</b> на вопрос), избегая односложных "
+        "ответов. При этом не превращай ответ в монолог — это беседа.\n"
+        "\n"
+        "🎤 На каждый вопрос отправляй отдельное голосовое сообщение."
+    ),
+    2: (
+        "Эта часть — индивидуальный монолог (Long Turn). "
+        "Ты получаешь карточку с темой и пунктами, которые нужно "
+        "раскрыть. На реальном экзамене даётся <b>1 минута</b> "
+        "на подготовку и ровно <b>2 минуты</b> на ответ — после "
+        "этого экзаменатор останавливает.\n"
+        "\n"
+        "Речь сверх 2 минут <b>не оценивается</b>. Если говоришь "
+        "значительно меньше 1:30, это может снизить балл за "
+        "Fluency & Coherence — на уровне Band 6+ требуется "
+        "умение говорить развёрнуто.\n"
+        "\n"
+        "🎤 Когда будешь готов — запиши одно голосовое сообщение."
+    ),
+    3: (
+        "Эта часть — двусторонняя дискуссия. Экзаменатор задаёт "
+        "более абстрактные и аналитические вопросы, часто "
+        "связанные с темой Part 2.\n"
+        "\n"
+        "Здесь ценится умение аргументировать, сравнивать, "
+        "рассуждать о причинах и последствиях. Отвечай развёрнуто "
+        "(<b>~30–60 секунд</b> на вопрос), приводи примеры "
+        "и обосновывай свою точку зрения.\n"
+        "\n"
+        "🎤 На каждый вопрос отправляй отдельное голосовое сообщение."
+    ),
+}
+
 
 # ── /start ───────────────────────────────────────────────
 
@@ -124,10 +173,17 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
         first_name=user.first_name,
         last_name=user.last_name,
     )
+    is_adm = _is_admin(user.id, user.username)
+    if is_adm:
+        _admin_ids.add(user.id)
+    logger.info(
+        "cmd_start: user_id=%d username=%s is_admin=%s admin_ids=%s",
+        user.id, user.username, is_adm, _admin_ids,
+    )
     await message.answer(
         WELCOME_TEXT,
         parse_mode=ParseMode.HTML,
-        reply_markup=main_menu_keyboard(),
+        reply_markup=main_menu_keyboard(is_admin=is_adm),
     )
     await state.set_state(SpeakingStates.choosing_part)
 
@@ -168,77 +224,166 @@ async def cmd_mystats(message: Message) -> None:
 
 # ── /admin ───────────────────────────────────────────────
 
-def _is_admin(user_id: int) -> bool:
-    return ADMIN_USER_ID is not None and user_id == ADMIN_USER_ID
+def _is_admin(user_id: int = 0, username: str | None = None) -> bool:
+    if user_id and user_id in _admin_ids:
+        return True
+    return ADMIN_USERNAME is not None and bool(username) and username.lower() == ADMIN_USERNAME
 
 
 @router.message(Command("admin"))
 async def cmd_admin(message: Message) -> None:
-    if not _is_admin(message.from_user.id):
+    if not _is_admin(message.from_user.id, message.from_user.username):
         return
     if not database.is_available():
         await message.answer("⚠️ База данных недоступна.")
         return
+    await _send_admin_page(message.chat.id, "overview")
+
+
+async def _send_admin_page(chat_id: int, page: str, edit_msg_id: int | None = None) -> None:
+    """Send or edit an admin page. For chart pages, sends photo + nav buttons."""
+    await bot.send_chat_action(chat_id, ChatAction.TYPING)
+
+    if page == "overview":
+        overview = await database.get_admin_overview()
+        text = format_admin_overview(overview)
+        if edit_msg_id:
+            await bot.edit_message_text(text, chat_id, edit_msg_id,
+                                        parse_mode=ParseMode.HTML,
+                                        reply_markup=admin_nav_keyboard(page))
+        else:
+            await bot.send_message(chat_id, text,
+                                   parse_mode=ParseMode.HTML,
+                                   reply_markup=admin_nav_keyboard(page))
+
+    elif page == "growth":
+        rows = await database.get_admin_growth(14)
+        chart_png = await asyncio.to_thread(charts.chart_growth, rows)
+        if edit_msg_id:
+            try:
+                await bot.delete_message(chat_id, edit_msg_id)
+            except Exception:
+                pass
+        await bot.send_photo(
+            chat_id,
+            BufferedInputFile(chart_png, filename="growth.png"),
+            caption="📈 <b>Рост за 14 дней</b>",
+            parse_mode=ParseMode.HTML,
+            reply_markup=admin_nav_keyboard(page),
+        )
+
+    elif page == "scores":
+        trend, dist, summary, parts = await asyncio.gather(
+            database.get_admin_score_trend(14),
+            database.get_admin_score_distribution(),
+            database.get_admin_scores_summary(),
+            database.get_admin_part_distribution(),
+        )
+        chart_png = await asyncio.to_thread(charts.chart_scores, trend, dist)
+        text = format_admin_scores(summary, parts)
+        if edit_msg_id:
+            try:
+                await bot.delete_message(chat_id, edit_msg_id)
+            except Exception:
+                pass
+        await bot.send_photo(
+            chat_id,
+            BufferedInputFile(chart_png, filename="scores.png"),
+            caption=text[:1024],
+            parse_mode=ParseMode.HTML,
+            reply_markup=admin_nav_keyboard(page),
+        )
+
+    elif page == "users":
+        rows = await database.get_admin_top_users(10)
+        text = format_admin_users(rows)
+        if edit_msg_id:
+            await bot.edit_message_text(text, chat_id, edit_msg_id,
+                                        parse_mode=ParseMode.HTML,
+                                        reply_markup=admin_nav_keyboard(page))
+        else:
+            await bot.send_message(chat_id, text,
+                                   parse_mode=ParseMode.HTML,
+                                   reply_markup=admin_nav_keyboard(page))
+
+    elif page == "usage":
+        rows = await database.get_admin_usage(14)
+        chart_png = await asyncio.to_thread(charts.chart_usage, rows)
+        if edit_msg_id:
+            try:
+                await bot.delete_message(chat_id, edit_msg_id)
+            except Exception:
+                pass
+        await bot.send_photo(
+            chat_id,
+            BufferedInputFile(chart_png, filename="usage.png"),
+            caption="⏱ <b>Нагрузка за 14 дней</b>",
+            parse_mode=ParseMode.HTML,
+            reply_markup=admin_nav_keyboard(page),
+        )
+
+    elif page == "outliers":
+        data = await database.get_admin_outliers()
+        text = format_admin_outliers(data)
+        if edit_msg_id:
+            await bot.edit_message_text(text, chat_id, edit_msg_id,
+                                        parse_mode=ParseMode.HTML,
+                                        reply_markup=admin_nav_keyboard(page))
+        else:
+            await bot.send_message(chat_id, text,
+                                   parse_mode=ParseMode.HTML,
+                                   reply_markup=admin_nav_keyboard(page))
+
+
+@router.callback_query(AdminAction.filter())
+async def admin_nav(callback: CallbackQuery, callback_data: AdminAction) -> None:
+    if not _is_admin(callback.from_user.id, callback.from_user.username):
+        return
+    page = callback_data.page
+    await callback.answer()
+    # For text pages, edit in place; for chart pages, delete + send new
+    text_pages = {"overview", "users", "outliers"}
+    edit_id = callback.message.message_id if page in text_pages else callback.message.message_id
+    await _send_admin_page(callback.message.chat.id, page, edit_msg_id=edit_id)
+
+
+# ── Menu button: Stats ───────────────────────────────────
+
+@router.message(F.text == STATS_BTN)
+async def handle_stats_button(message: Message, state: FSMContext) -> None:
+    if not database.is_available():
+        await message.answer(
+            "⚠️ База данных недоступна. Попробуйте позже.",
+            parse_mode=ParseMode.HTML,
+        )
+        return
 
     await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
-    overview = await database.get_admin_overview()
-    await message.answer(
-        format_admin_overview(overview),
-        parse_mode=ParseMode.HTML,
-        reply_markup=admin_nav_keyboard("overview"),
-    )
-
-
-@router.callback_query(AdminAction.filter(F.page == "overview"))
-async def admin_overview(callback: CallbackQuery) -> None:
-    if not _is_admin(callback.from_user.id):
+    stats = await database.get_user_stats(message.from_user.id)
+    if stats is None:
+        await message.answer(
+            "📊 <b>Статистика</b>\n\n"
+            "У тебя пока нет завершённых сессий.\n"
+            "Выбери раздел экзамена и начни тренировку!",
+            parse_mode=ParseMode.HTML,
+        )
         return
-    overview = await database.get_admin_overview()
-    await callback.message.edit_text(
-        format_admin_overview(overview),
-        parse_mode=ParseMode.HTML,
-        reply_markup=admin_nav_keyboard("overview"),
-    )
-    await callback.answer()
+
+    recent = await database.get_user_recent_assessments(message.from_user.id)
+    text = format_user_stats(stats, recent)
+    await message.answer(text, parse_mode=ParseMode.HTML)
 
 
-@router.callback_query(AdminAction.filter(F.page == "daily"))
-async def admin_daily(callback: CallbackQuery) -> None:
-    if not _is_admin(callback.from_user.id):
+# ── Menu button: Admin ──────────────────────────────────
+
+@router.message(F.text == ADMIN_BTN)
+async def handle_admin_button(message: Message, state: FSMContext) -> None:
+    if not _is_admin(message.from_user.id, message.from_user.username):
         return
-    rows = await database.get_admin_daily_stats(7)
-    await callback.message.edit_text(
-        format_admin_daily(rows),
-        parse_mode=ParseMode.HTML,
-        reply_markup=admin_nav_keyboard("daily"),
-    )
-    await callback.answer()
-
-
-@router.callback_query(AdminAction.filter(F.page == "top_users"))
-async def admin_top_users(callback: CallbackQuery) -> None:
-    if not _is_admin(callback.from_user.id):
+    if not database.is_available():
+        await message.answer("⚠️ База данных недоступна.")
         return
-    rows = await database.get_admin_top_users(10)
-    await callback.message.edit_text(
-        format_admin_top_users(rows),
-        parse_mode=ParseMode.HTML,
-        reply_markup=admin_nav_keyboard("top_users"),
-    )
-    await callback.answer()
-
-
-@router.callback_query(AdminAction.filter(F.page == "parts"))
-async def admin_parts(callback: CallbackQuery) -> None:
-    if not _is_admin(callback.from_user.id):
-        return
-    rows = await database.get_admin_part_distribution()
-    await callback.message.edit_text(
-        format_admin_parts(rows),
-        parse_mode=ParseMode.HTML,
-        reply_markup=admin_nav_keyboard("parts"),
-    )
-    await callback.answer()
+    await _send_admin_page(message.chat.id, "overview")
 
 
 # ── Part selection ───────────────────────────────────────
@@ -268,25 +413,30 @@ async def handle_part_selection(message: Message, state: FSMContext) -> None:
     questions = session.get("questions", [])
     cue_card = session.get("cue_card", "")
 
+    gen_topic_id = await database.save_generated_topic(
+        user_id=message.from_user.id,
+        part=part, topic=topic,
+        questions=questions or None,
+        cue_card=cue_card or None,
+    )
+
     await state.update_data(
         part=part,
         topic=topic,
         questions=questions,
         cue_card=cue_card,
+        gen_topic_id=gen_topic_id,
         current_q_index=0,
         audio_file_ids=[],
         audio_durations=[],
     )
 
-    text = (
-        f"📝 <b>{PART_NAMES[part]}</b>\n"
-        f"\n"
-        f"Тема: <b>{topic}</b>\n"
-    )
+    text = f"📝 <b>{PART_NAMES[part]}</b>\n\nТема: <b>{topic}</b>\n"
     if part == 2:
         text += f"\n{cue_card}\n"
     else:
-        text += f"\nВам будет задано {len(questions)} вопросов.\n"
+        text += f"\nВопросов: {len(questions)}\n"
+    text += f"\n{PART_INSTRUCTIONS[part]}"
 
     await message.answer(
         text,
@@ -316,21 +466,26 @@ async def handle_another_topic(callback: CallbackQuery, state: FSMContext) -> No
     questions = session.get("questions", [])
     cue_card = session.get("cue_card", "")
 
+    gen_topic_id = await database.save_generated_topic(
+        user_id=callback.from_user.id,
+        part=part, topic=topic,
+        questions=questions or None,
+        cue_card=cue_card or None,
+    )
+
     await state.update_data(
         topic=topic,
         questions=questions,
         cue_card=cue_card,
+        gen_topic_id=gen_topic_id,
     )
 
-    text = (
-        f"📝 <b>{PART_NAMES[part]}</b>\n"
-        f"\n"
-        f"Тема: <b>{topic}</b>\n"
-    )
+    text = f"📝 <b>{PART_NAMES[part]}</b>\n\nТема: <b>{topic}</b>\n"
     if part == 2:
         text += f"\n{cue_card}\n"
     else:
-        text += f"\nВам будет задано {len(questions)} вопросов.\n"
+        text += f"\nВопросов: {len(questions)}\n"
+    text += f"\n{PART_INSTRUCTIONS[part]}"
 
     await callback.message.edit_text(
         text,
@@ -343,6 +498,10 @@ async def handle_another_topic(callback: CallbackQuery, state: FSMContext) -> No
 async def handle_accept_topic(callback: CallbackQuery, state: FSMContext) -> None:
     data = await state.get_data()
     part = data["part"]
+    gen_topic_id = data.get("gen_topic_id")
+
+    # Mark topic as accepted
+    await database.mark_topic_accepted(gen_topic_id)
 
     # Create DB session
     db_session_id = await database.create_session(
@@ -351,6 +510,7 @@ async def handle_accept_topic(callback: CallbackQuery, state: FSMContext) -> Non
         topic=data["topic"],
         questions=data.get("questions") or None,
         cue_card=data.get("cue_card") or None,
+        topic_id=gen_topic_id,
     )
     await state.update_data(db_session_id=db_session_id)
 
@@ -358,7 +518,7 @@ async def handle_accept_topic(callback: CallbackQuery, state: FSMContext) -> Non
     await callback.message.edit_reply_markup(reply_markup=None)
 
     if part == 2:
-        await _start_part2(callback.message, state)
+        asyncio.create_task(_start_part2_countdown(callback.message.chat.id, state))
     else:
         answering_state = (
             SpeakingStates.part1_answering if part == 1
@@ -368,22 +528,55 @@ async def handle_accept_topic(callback: CallbackQuery, state: FSMContext) -> Non
         await _send_question(callback.message, state, 0)
 
 
-# ── Part 2 start ─────────────────────────────────────────
+# ── Part 2 countdown + start ─────────────────────────────
 
-async def _start_part2(message: Message, state: FSMContext) -> None:
+async def _start_part2_countdown(chat_id: int, state: FSMContext) -> None:
+    await state.set_state(SpeakingStates.part2_preparing)
+
+    msg = await bot.send_message(
+        chat_id,
+        "⏱ <b>Подготовка: 1:00</b>\n\n"
+        "<i>Можешь оставлять текстовые заметки прямо здесь.\n"
+        "Когда будешь готов раньше — просто запиши голосовое.</i>",
+        parse_mode=ParseMode.HTML,
+    )
+
+    countdown = [(15, "0:45"), (15, "0:30"), (10, "0:20"), (5, "0:15"),
+                 (5, "0:10"), (5, "0:05"), (5, None)]
+
+    for sleep_sec, label in countdown:
+        await asyncio.sleep(sleep_sec)
+        current = await state.get_state()
+        if current != SpeakingStates.part2_preparing.state:
+            return  # user left (sent voice, /start, etc.)
+        if label:
+            try:
+                await bot.edit_message_text(
+                    f"⏱ <b>Подготовка: {label}</b>\n\n"
+                    "<i>Можешь оставлять текстовые заметки прямо здесь.\n"
+                    "Когда будешь готов раньше — просто запиши голосовое.</i>",
+                    chat_id, msg.message_id,
+                    parse_mode=ParseMode.HTML,
+                )
+            except Exception:
+                pass
+
+    current = await state.get_state()
+    if current != SpeakingStates.part2_preparing.state:
+        return
+
     await state.set_state(SpeakingStates.part2_answering)
-    await message.answer(
-        "⏱ У вас <b>1 минута</b> на подготовку "
-        "и до <b>2 минут</b> на ответ.\n"
-        "\n"
-        "В реальном IELTS экзамене экзаменатор остановит вас\n"
-        "ровно через 2 минуты. Речь сверх 2 минут <b>не оценивается</b>.\n"
-        "\n"
-        "Если вы говорите значительно меньше 2 минут, это может\n"
-        "снизить балл за Fluency & Coherence, так как на уровне\n"
-        "Band 6+ требуется умение «говорить развёрнуто».\n"
-        "\n"
-        "🎤 Когда будете готовы — запишите голосовое сообщение.",
+    try:
+        await bot.edit_message_text(
+            "⏱ <b>Время подготовки вышло!</b>",
+            chat_id, msg.message_id,
+            parse_mode=ParseMode.HTML,
+        )
+    except Exception:
+        pass
+    await bot.send_message(
+        chat_id,
+        "🎤 Запиши голосовое сообщение (до 2 минут).",
         parse_mode=ParseMode.HTML,
     )
 
@@ -453,6 +646,13 @@ async def _handle_qa_voice(message: Message, state: FSMContext, current_state) -
 
 
 # ── Part 2 voice handler ────────────────────────────────
+
+@router.message(SpeakingStates.part2_preparing, F.voice)
+async def handle_part2_voice_early(message: Message, state: FSMContext) -> None:
+    """User skipped prep time by sending voice early."""
+    await state.set_state(SpeakingStates.part2_answering)
+    await handle_part2_voice(message, state)
+
 
 @router.message(SpeakingStates.part2_answering, F.voice)
 async def handle_part2_voice(message: Message, state: FSMContext) -> None:
@@ -581,7 +781,7 @@ async def handle_retry(callback: CallbackQuery, state: FSMContext) -> None:
         await state.set_state(SpeakingStates.part1_answering)
         await _send_question(callback.message, state, 0)
     elif part == 2:
-        await _start_part2(callback.message, state)
+        asyncio.create_task(_start_part2_countdown(callback.message.chat.id, state))
     else:
         await state.set_state(SpeakingStates.part3_answering)
         await _send_question(callback.message, state, 0)
@@ -593,10 +793,120 @@ async def handle_back_to_menu(callback: CallbackQuery, state: FSMContext) -> Non
     await callback.message.edit_reply_markup(reply_markup=None)
     await state.clear()
     await callback.message.answer(
-        "👇 Выберите раздел экзамена:",
-        reply_markup=main_menu_keyboard(),
+        "👇 Выбери раздел экзамена:",
+        reply_markup=main_menu_keyboard(
+            is_admin=_is_admin(callback.from_user.id, callback.from_user.username),
+        ),
     )
     await state.set_state(SpeakingStates.choosing_part)
+
+
+# ── Interrupt: part button pressed during active session ──
+
+ACTIVE_STATES = {
+    SpeakingStates.choosing_topic,
+    SpeakingStates.part1_answering,
+    SpeakingStates.part2_preparing,
+    SpeakingStates.part2_answering,
+    SpeakingStates.part3_answering,
+    SpeakingStates.assessing,
+    SpeakingStates.viewing_results,
+}
+
+PART_MAP = {PART1_BTN: 1, PART2_BTN: 2, PART3_BTN: 3}
+
+
+@router.message(F.text.in_({PART1_BTN, PART2_BTN, PART3_BTN}))
+async def handle_part_while_active(message: Message, state: FSMContext) -> None:
+    current = await state.get_state()
+    if current is None:
+        await message.answer("Нажми /start, чтобы начать.")
+        return
+
+    data = await state.get_data()
+    current_part = data.get("part")
+    new_part = PART_MAP[message.text]
+
+    if current_part:
+        await message.answer(
+            f"⚠️ У тебя уже начата <b>{PART_NAMES[current_part]}</b>.\n"
+            "Что хочешь сделать?",
+            parse_mode=ParseMode.HTML,
+            reply_markup=interrupt_keyboard(new_part),
+        )
+    else:
+        await state.clear()
+        await state.set_state(SpeakingStates.choosing_part)
+        await handle_part_selection(message, state)
+
+
+@router.callback_query(InterruptAction.filter(F.action == "continue"))
+async def handle_interrupt_continue(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer("Продолжаем!")
+    await callback.message.edit_reply_markup(reply_markup=None)
+
+
+@router.callback_query(InterruptAction.filter(F.action == "new"))
+async def handle_interrupt_new(
+    callback: CallbackQuery, callback_data: InterruptAction, state: FSMContext,
+) -> None:
+    new_part = callback_data.new_part
+    # Cancel current session in DB
+    data = await state.get_data()
+    db_session_id = data.get("db_session_id")
+    if db_session_id:
+        await database.fail_session(db_session_id)
+
+    await callback.answer()
+    await callback.message.edit_reply_markup(reply_markup=None)
+
+    await state.clear()
+    await state.set_state(SpeakingStates.choosing_part)
+    # Simulate part selection
+    await state.update_data(_pending_part=new_part)
+    await callback.message.answer(
+        "⏳ <i>Генерирую тему...</i>",
+        parse_mode=ParseMode.HTML,
+    )
+    await bot.send_chat_action(callback.message.chat.id, ChatAction.TYPING)
+
+    try:
+        session = await generate_session(new_part)
+    except Exception:
+        logger.exception("Failed to generate session")
+        await callback.message.answer(
+            format_error("Не удалось сгенерировать тему. Попробуйте ещё раз."),
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    topic = session.get("topic", "General")
+    questions = session.get("questions", [])
+    cue_card = session.get("cue_card", "")
+
+    await state.update_data(
+        part=new_part,
+        topic=topic,
+        questions=questions,
+        cue_card=cue_card,
+        current_q_index=0,
+        audio_file_ids=[],
+        audio_durations=[],
+    )
+
+    text = f"📝 <b>{PART_NAMES[new_part]}</b>\n\nТема: <b>{topic}</b>\n"
+    if new_part == 2:
+        text += f"\n{cue_card}\n"
+    else:
+        text += f"\nВопросов: {len(questions)}\n"
+    text += f"\n{PART_INSTRUCTIONS[new_part]}"
+
+    await callback.message.answer(
+        text,
+        parse_mode=ParseMode.HTML,
+        reply_markup=topic_keyboard(),
+    )
+    await state.set_state(SpeakingStates.choosing_topic)
 
 
 # ── Catch-all handlers ───────────────────────────────────
@@ -605,7 +915,7 @@ async def handle_back_to_menu(callback: CallbackQuery, state: FSMContext) -> Non
 @router.message(SpeakingStates.part3_answering, F.text)
 async def handle_text_during_qa(message: Message) -> None:
     await message.answer(
-        "🎤 Пожалуйста, отправьте <b>голосовое сообщение</b>.",
+        "🎤 Пожалуйста, отправь <b>голосовое сообщение</b>.",
         parse_mode=ParseMode.HTML,
     )
 
@@ -613,7 +923,7 @@ async def handle_text_during_qa(message: Message) -> None:
 @router.message(SpeakingStates.part2_answering, F.text)
 async def handle_text_during_part2(message: Message) -> None:
     await message.answer(
-        "🎤 Запишите <b>голосовое сообщение</b> (до 2 минут).",
+        "🎤 Запиши <b>голосовое сообщение</b> (до 2 минут).",
         parse_mode=ParseMode.HTML,
     )
 
@@ -638,12 +948,14 @@ async def handle_unexpected_text(message: Message, state: FSMContext) -> None:
     current = await state.get_state()
     if current is None:
         await message.answer(
-            "Нажмите /start, чтобы начать.",
+            "Нажми /start, чтобы начать.",
         )
     elif current == SpeakingStates.choosing_part.state:
         await message.answer(
-            "👇 Выберите раздел в меню ниже.",
-            reply_markup=main_menu_keyboard(),
+            "👇 Выбери раздел в меню ниже.",
+            reply_markup=main_menu_keyboard(
+                is_admin=_is_admin(message.from_user.id, message.from_user.username),
+            ),
         )
 
 
@@ -676,6 +988,11 @@ async def _set_bot_commands() -> None:
 async def main() -> None:
     logger.info("Starting IELTS Speaking Practice bot...")
     await database.init_db()
+    if ADMIN_USERNAME:
+        uid = await database.get_user_id_by_username(ADMIN_USERNAME)
+        if uid:
+            _admin_ids.add(uid)
+            logger.info("Admin user loaded: %s (id=%d)", ADMIN_USERNAME, uid)
     await _set_bot_commands()
     try:
         await dp.start_polling(bot)

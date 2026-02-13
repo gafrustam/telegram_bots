@@ -42,3 +42,23 @@ CREATE TABLE IF NOT EXISTS assessments (
 
 CREATE INDEX IF NOT EXISTS idx_assessments_user_id ON assessments(user_id);
 CREATE INDEX IF NOT EXISTS idx_assessments_created_at ON assessments(created_at);
+
+-- Generated topics (all topics shown to users, accepted or not)
+CREATE TABLE IF NOT EXISTS generated_topics (
+    id         SERIAL PRIMARY KEY,
+    user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    part       SMALLINT NOT NULL CHECK (part IN (1, 2, 3)),
+    topic      TEXT NOT NULL,
+    questions  JSONB,
+    cue_card   TEXT,
+    accepted   BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_gen_topics_user ON generated_topics(user_id);
+
+-- Link sessions to generated topics
+DO $$ BEGIN
+    ALTER TABLE sessions ADD COLUMN topic_id INTEGER REFERENCES generated_topics(id);
+EXCEPTION WHEN duplicate_column THEN NULL;
+END $$;
