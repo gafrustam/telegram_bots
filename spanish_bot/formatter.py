@@ -1,23 +1,6 @@
 import html
 from datetime import datetime
 
-CRITERIA = [
-    ("vocab_use", "Vocabulario"),
-    ("grammar", "Gramatica"),
-    ("fluency", "Fluidez"),
-    ("comprehension", "Comprension"),
-    ("pronunciation", "Pronunciacion"),
-]
-
-SCORE_EMOJI = {
-    10: "💎", 9: "🟢", 8: "🟢", 7: "🟡", 6: "🟡",
-    5: "🟠", 4: "🟠", 3: "🔴", 2: "🔴", 1: "🔴",
-}
-
-
-def _score_emoji(score: float) -> str:
-    return SCORE_EMOJI.get(int(round(score)), "⚪")
-
 
 def _esc(text: str) -> str:
     return html.escape(text)
@@ -29,24 +12,42 @@ def _val(v, default="—") -> str:
 
 # ── Scenario display ────────────────────────────────────
 
-def format_scenario(topic: str, scenario: str, vocabulary: list[dict]) -> str:
+def format_scenario(
+    topic: str, scenario: str,
+    vocabulary: list[dict], constructions: list[dict],
+) -> str:
     lines = [
         f"🗣 <b>{_esc(topic)}</b>",
         "",
         f"<i>{_esc(scenario)}</i>",
         "",
         "━━━━━━━━━━━━━━━",
-        "📚 <b>Vocabulario</b>",
+        "📚 <b>Слова</b>",
         "━━━━━━━━━━━━━━━",
     ]
 
     for w in vocabulary:
         spanish = _esc(w.get("spanish", ""))
-        english = _esc(w.get("english", ""))
+        russian = _esc(w.get("russian", w.get("english", "")))
         example = _esc(w.get("example", ""))
-        lines.append(f"  • <b>{spanish}</b> — {english}")
+        lines.append(f"  • <b>{spanish}</b> — {russian}")
         if example:
             lines.append(f"    <i>{example}</i>")
+
+    if constructions:
+        lines.append("")
+        lines.append("━━━━━━━━━━━━━━━")
+        lines.append("🧩 <b>Конструкции</b>")
+        lines.append("━━━━━━━━━━━━━━━")
+        for c in constructions:
+            spanish = _esc(c.get("spanish", ""))
+            russian = _esc(c.get("russian", ""))
+            example = _esc(c.get("example", ""))
+            lines.append(f"  • <b>{spanish}</b>")
+            if russian:
+                lines.append(f"    {russian}")
+            if example:
+                lines.append(f"    <i>{example}</i>")
 
     return "\n".join(lines)
 
@@ -57,47 +58,43 @@ def format_assessment(data: dict) -> str:
     if "error" in data:
         return f"⚠️ {_esc(data['error'])}"
 
-    overall = data.get("overall_score", 0)
     lines = []
 
-    lines.append("🎯 <b>Результаты разговора</b>")
-    lines.append("")
-    lines.append("━━━━━━━━━━━━━━━")
-    lines.append(f"  {_score_emoji(overall)}  <b>Общий балл:  {overall}/10</b>")
-    lines.append("━━━━━━━━━━━━━━━")
-    lines.append("")
-
-    # Summary scores
-    for key, label in CRITERIA:
-        criterion = data.get(key, {})
-        score = criterion.get("score", "–")
-        score_f = float(score) if score != "–" else 0
-        lines.append(f"  {_score_emoji(score_f)}  {label}:  <b>{score}/10</b>")
-    lines.append("")
-
-    # Detailed explanations
-    lines.append("━━━━━━━━━━━━━━━")
-    lines.append("📋 <b>Подробный разбор</b>")
-    lines.append("━━━━━━━━━━━━━━━")
-
-    for key, label in CRITERIA:
-        criterion = data.get(key, {})
-        score = criterion.get("score", "–")
-        explanation = criterion.get("explanation", "")
+    # Praise
+    praise = data.get("praise", "")
+    if praise:
+        lines.append(f"👏 {_esc(praise)}")
         lines.append("")
-        lines.append(f"📌 <b>{label}</b>  —  <b>{score}/10</b>")
-        if explanation:
-            lines.append(f"<i>{_esc(explanation)}</i>")
-        examples = criterion.get("examples", [])
-        if examples:
-            for ex in examples:
-                lines.append(f"  ▸ {_esc(ex)}")
 
-    # General feedback
+    # Mistakes
+    mistakes = data.get("mistakes", [])
+    if mistakes:
+        lines.append("✏️ <b>Обрати внимание:</b>")
+        for m in mistakes:
+            said = _esc(m.get("said", ""))
+            correction = _esc(m.get("correction", ""))
+            note = _esc(m.get("note", ""))
+            lines.append(f"  • <s>{said}</s> → <b>{correction}</b>")
+            if note:
+                lines.append(f"    <i>{note}</i>")
+        lines.append("")
+
+    # Suggestions
+    suggestions = data.get("suggestions", [])
+    if suggestions:
+        lines.append("💡 <b>Слова на заметку:</b>")
+        for s in suggestions:
+            if isinstance(s, dict):
+                word = _esc(s.get("word", ""))
+                translation = _esc(s.get("translation", ""))
+                lines.append(f"  • <b>{word}</b> — {translation}")
+            else:
+                lines.append(f"  • {_esc(str(s))}")
+        lines.append("")
+
+    # Feedback
     feedback = data.get("feedback_text", "")
     if feedback:
-        lines.append("")
-        lines.append("━━━━━━━━━━━━━━━")
         lines.append(f"💬 {_esc(feedback)}")
 
     return "\n".join(lines)
@@ -138,23 +135,7 @@ def format_user_stats(stats: dict, recent: list[dict]) -> str:
         "━━━━━━━━━━━━━━━",
         f"  Диалогов: <b>{stats['sessions_7d']}</b>",
         f"  Средний балл: <b>{_val(stats['avg_7d'])}</b>",
-        "",
-        "━━━━━━━━━━━━━━━",
-        "🔬 <b>Средний балл по критериям</b>",
-        "━━━━━━━━━━━━━━━",
     ]
-
-    criteria_map = [
-        ("avg_vocab", "Vocabulario"),
-        ("avg_grammar", "Gramatica"),
-        ("avg_fluency", "Fluidez"),
-        ("avg_comprehension", "Comprension"),
-        ("avg_pronunciation", "Pronunciacion"),
-    ]
-    for key, label in criteria_map:
-        val = stats.get(key)
-        emoji = _score_emoji(float(val)) if val is not None else "⚪"
-        lines.append(f"  {emoji}  {label}: <b>{_val(val)}</b>")
 
     if recent:
         lines.append("")

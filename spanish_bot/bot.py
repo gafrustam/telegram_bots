@@ -223,11 +223,14 @@ async def _generate_and_show_scenario(message: Message, state: FSMContext) -> No
     vocabulary = scenario_data.get("vocabulary", [])
     opening_line = scenario_data.get("opening_line", "Hola!")
 
+    constructions = scenario_data.get("constructions", [])
+
     await state.update_data(
         level_num=level_num,
         topic=topic,
         scenario=scenario_text,
         vocabulary=vocabulary,
+        constructions=constructions,
         opening_line=opening_line,
         conversation_history=[],
         user_audio_file_ids=[],
@@ -235,7 +238,7 @@ async def _generate_and_show_scenario(message: Message, state: FSMContext) -> No
         db_conversation_id=None,
     )
 
-    text = format_scenario(topic, scenario_text, vocabulary)
+    text = format_scenario(topic, scenario_text, vocabulary, constructions)
     text += f"\n\n🎓 <b>Nivel {level.level} — {level.label} ({level.cefr})</b>"
     text += f"\n💬 Обменов: {level.exchanges}"
 
@@ -267,16 +270,18 @@ async def handle_another_topic(callback: CallbackQuery, state: FSMContext) -> No
     topic = scenario_data.get("topic", "Conversacion")
     scenario_text = scenario_data.get("scenario", "")
     vocabulary = scenario_data.get("vocabulary", [])
+    constructions = scenario_data.get("constructions", [])
     opening_line = scenario_data.get("opening_line", "Hola!")
 
     await state.update_data(
         topic=topic,
         scenario=scenario_text,
         vocabulary=vocabulary,
+        constructions=constructions,
         opening_line=opening_line,
     )
 
-    text = format_scenario(topic, scenario_text, vocabulary)
+    text = format_scenario(topic, scenario_text, vocabulary, constructions)
     text += f"\n\n🎓 <b>Nivel {level.level} — {level.label} ({level.cefr})</b>"
     text += f"\n💬 Обменов: {level.exchanges}"
 

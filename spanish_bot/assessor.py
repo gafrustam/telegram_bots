@@ -68,6 +68,7 @@ async def generate_scenario(level: DifficultyLevel) -> dict:
         topics=level.topics,
         max_sentence_words=str(level.max_sentence_words),
         vocab_count=str(level.vocab_count),
+        construction_count=str(level.construction_count),
     )
 
     client = _get_client()

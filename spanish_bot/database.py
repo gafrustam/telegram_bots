@@ -195,11 +195,7 @@ async def save_assessment(
         conversation_id,
         user_id,
         float(result.get("overall_score", 0)),
-        float(result.get("vocab_use", {}).get("score", 0)),
-        float(result.get("grammar", {}).get("score", 0)),
-        float(result.get("fluency", {}).get("score", 0)),
-        float(result.get("comprehension", {}).get("score", 0)),
-        float(result.get("pronunciation", {}).get("score", 0)),
+        0.0, 0.0, 0.0, 0.0, 0.0,
         result.get("feedback_text", ""),
         json.dumps(result),
     )
@@ -222,7 +218,7 @@ async def save_vocabulary(
                 [
                     (
                         user_id, conversation_id,
-                        w.get("spanish", ""), w.get("english", ""),
+                        w.get("spanish", ""), w.get("russian", w.get("english", "")),
                         w.get("example"),
                     )
                     for w in words
@@ -242,11 +238,6 @@ async def get_user_stats(user_id: int) -> dict | None:
             count(*) FILTER (WHERE c.status = 'completed')       AS completed,
             round(avg(a.overall_score)::numeric, 1)              AS avg_score,
             max(a.overall_score)                                 AS best_score,
-            round(avg(a.vocab_use)::numeric, 1)                  AS avg_vocab,
-            round(avg(a.grammar)::numeric, 1)                    AS avg_grammar,
-            round(avg(a.fluency)::numeric, 1)                    AS avg_fluency,
-            round(avg(a.comprehension)::numeric, 1)              AS avg_comprehension,
-            round(avg(a.pronunciation)::numeric, 1)              AS avg_pronunciation,
             round(avg(a.overall_score) FILTER
                 (WHERE a.created_at > now() - interval '7 days')::numeric, 1) AS avg_7d,
             count(*) FILTER
