@@ -48,10 +48,6 @@ def results_keyboard() -> InlineKeyboardMarkup:
             text="🔁 Пройти заново",
             callback_data=ResultAction(action="retry").pack(),
         )],
-        [InlineKeyboardButton(
-            text="🏠 Главное меню",
-            callback_data=ResultAction(action="menu").pack(),
-        )],
     ])
 
 
@@ -73,11 +69,9 @@ def interrupt_keyboard(new_part: int) -> InlineKeyboardMarkup:
 
 def admin_nav_keyboard(current: str) -> InlineKeyboardMarkup:
     pages = [
-        ("📊 Обзор", "overview"),
-        ("📈 Рост", "growth"),
-        ("🎯 Баллы", "scores"),
+        ("📋 Дашборд", "dashboard"),
+        ("📊 Гистограмма", "histogram"),
         ("👥 Юзеры", "users"),
-        ("⏱ Нагрузка", "usage"),
         ("⚡ Выбросы", "outliers"),
     ]
     buttons = [
@@ -88,9 +82,4 @@ def admin_nav_keyboard(current: str) -> InlineKeyboardMarkup:
         for label, page in pages
         if page != current
     ]
-    row1 = buttons[:3]
-    row2 = buttons[3:]
-    rows = [row1]
-    if row2:
-        rows.append(row2)
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    return InlineKeyboardMarkup(inline_keyboard=[buttons])

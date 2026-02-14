@@ -270,65 +270,59 @@ async def get_user_id_by_username(username: str) -> int | None:
 
 # ── Admin queries ───────────────────────────────────────
 
-async def get_admin_overview() -> dict | None:
-    row = await _fetchrow(
-        """
-        SELECT
-            (SELECT count(*) FROM users) AS total_users,
-            (SELECT count(*) FROM users
-             WHERE created_at > now() - interval '24 hours') AS new_users_24h,
-            (SELECT count(*) FROM users
-             WHERE created_at > now() - interval '7 days') AS new_users_7d,
-            (SELECT count(*) FROM users
-             WHERE created_at > now() - interval '30 days') AS new_users_30d,
-            (SELECT count(*) FROM users
-             WHERE last_active > now() - interval '7 days') AS active_7d,
-            (SELECT count(*) FROM users
-             WHERE last_active > now() - interval '24 hours') AS active_24h,
-            (SELECT count(*) FROM users
-             WHERE last_active > now() - interval '30 days') AS active_30d,
-            (SELECT count(*) FROM sessions) AS total_sessions,
-            (SELECT count(*) FROM sessions WHERE status = 'completed') AS completed_sessions,
-            (SELECT count(*) FROM sessions WHERE status = 'failed') AS failed_sessions,
-            (SELECT count(*) FROM assessments) AS total_assessments,
-            (SELECT round(avg(overall_band)::numeric, 1) FROM assessments) AS global_avg_band,
-            (SELECT max(overall_band) FROM assessments) AS best_band,
-            (SELECT round((sum(audio_duration_total) / 60.0)::numeric, 1)
-             FROM sessions WHERE status = 'completed') AS total_audio_min,
-            (SELECT round(avg(audio_duration_total)::numeric, 0)
-             FROM sessions WHERE status = 'completed') AS avg_audio_sec,
-            -- this week vs last week
-            (SELECT count(*) FROM sessions
-             WHERE started_at > now() - interval '7 days') AS sessions_this_week,
-            (SELECT count(*) FROM sessions
-             WHERE started_at BETWEEN now() - interval '14 days'
-                                   AND now() - interval '7 days') AS sessions_last_week,
-            (SELECT count(*) FROM users
-             WHERE created_at > now() - interval '7 days') AS users_this_week,
-            (SELECT count(*) FROM users
-             WHERE created_at BETWEEN now() - interval '14 days'
-                                   AND now() - interval '7 days') AS users_last_week
-        """
-    )
-    return dict(row) if row else None
-
-
-async def get_admin_growth(days: int = 14) -> list[dict]:
+async def get_admin_dashboard(days: int = 10) -> list[dict]:
     rows = await _fetch(
         """
         SELECT
             d::date AS day,
+            (SELECT count(*) FROM users
+             WHERE created_at::date <= d::date) AS total_users,
             (SELECT count(*) FROM users
              WHERE created_at::date = d::date) AS new_users,
-            count(DISTINCT s.id) AS sessions,
-            count(DISTINCT s.user_id) AS unique_users
+            (SELECT count(*) FROM sessions
+             WHERE started_at::date = d::date
+               AND status = 'completed') AS completed,
+            (SELECT count(*) FROM sessions
+             WHERE started_at::date = d::date
+               AND status != 'completed') AS incomplete,
+            (SELECT round(coalesce(sum(audio_duration_total), 0) / 60.0, 1)
+             FROM sessions
+             WHERE started_at::date = d::date
+               AND status = 'completed') AS total_minutes,
+            (SELECT count(DISTINCT user_id) FROM sessions
+             WHERE started_at::date = d::date) AS active_users,
+            (SELECT count(DISTINCT s1.user_id)
+             FROM sessions s1
+             WHERE s1.started_at::date = d::date
+               AND EXISTS (
+                   SELECT 1 FROM sessions s2
+                   WHERE s2.user_id = s1.user_id
+                     AND s2.started_at::date = d::date + 1
+               )
+            ) AS ret_d1,
+            (SELECT count(DISTINCT s1.user_id)
+             FROM sessions s1
+             WHERE s1.started_at::date = d::date
+               AND EXISTS (
+                   SELECT 1 FROM sessions s2
+                   WHERE s2.user_id = s1.user_id
+                     AND s2.started_at::date BETWEEN d::date + 1 AND d::date + 3
+               )
+            ) AS ret_d3,
+            (SELECT count(DISTINCT s1.user_id)
+             FROM sessions s1
+             WHERE s1.started_at::date = d::date
+               AND EXISTS (
+                   SELECT 1 FROM sessions s2
+                   WHERE s2.user_id = s1.user_id
+                     AND s2.started_at::date BETWEEN d::date + 1 AND d::date + 7
+               )
+            ) AS ret_d7
         FROM generate_series(
             (now() - make_interval(days => $1))::date,
             now()::date,
             '1 day'::interval
         ) d
-        LEFT JOIN sessions s ON s.started_at::date = d::date
-        GROUP BY d::date
         ORDER BY d::date
         """,
         days,
@@ -336,72 +330,19 @@ async def get_admin_growth(days: int = 14) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-async def get_admin_score_trend(days: int = 14) -> list[dict]:
+async def get_admin_user_score_distribution() -> list[dict]:
     rows = await _fetch(
         """
         SELECT
-            d::date AS day,
-            round(avg(a.overall_band)::numeric, 1) AS avg_band,
-            count(a.id) AS cnt
-        FROM generate_series(
-            (now() - make_interval(days => $1))::date,
-            now()::date,
-            '1 day'::interval
-        ) d
-        LEFT JOIN assessments a ON a.created_at::date = d::date
-        GROUP BY d::date
-        ORDER BY d::date
-        """,
-        days,
-    )
-    return [dict(r) for r in rows]
-
-
-async def get_admin_score_distribution() -> list[dict]:
-    rows = await _fetch(
-        """
-        SELECT
-            (floor(overall_band * 2) / 2)::numeric AS band_bucket,
+            (floor(avg_band * 2) / 2)::numeric AS band_bucket,
             count(*) AS cnt
-        FROM assessments
+        FROM (
+            SELECT user_id, avg(overall_band) AS avg_band
+            FROM assessments
+            GROUP BY user_id
+        ) user_avgs
         GROUP BY band_bucket
         ORDER BY band_bucket
-        """
-    )
-    return [dict(r) for r in rows]
-
-
-async def get_admin_scores_summary() -> dict | None:
-    row = await _fetchrow(
-        """
-        SELECT
-            round(avg(overall_band)::numeric, 1) AS avg_overall,
-            round(avg(fluency_coherence)::numeric, 1) AS avg_fc,
-            round(avg(lexical_resource)::numeric, 1) AS avg_lr,
-            round(avg(grammatical_range_accuracy)::numeric, 1) AS avg_gra,
-            round(avg(pronunciation)::numeric, 1) AS avg_pron,
-            max(overall_band) AS best_overall,
-            min(overall_band) AS worst_overall,
-            count(*) AS total
-        FROM assessments
-        """
-    )
-    return dict(row) if row else None
-
-
-async def get_admin_part_distribution() -> list[dict]:
-    rows = await _fetch(
-        """
-        SELECT
-            s.part,
-            count(*) AS cnt,
-            count(*) FILTER (WHERE s.status = 'completed') AS completed,
-            round(avg(a.overall_band)::numeric, 1) AS avg_band,
-            round(sum(s.audio_duration_total) / 60.0, 1) AS audio_min
-        FROM sessions s
-        LEFT JOIN assessments a ON a.session_id = s.id
-        GROUP BY s.part
-        ORDER BY s.part
         """
     )
     return [dict(r) for r in rows]
@@ -425,33 +366,6 @@ async def get_admin_top_users(limit: int = 10) -> list[dict]:
         LIMIT $1
         """,
         limit,
-    )
-    return [dict(r) for r in rows]
-
-
-async def get_admin_usage(days: int = 14) -> list[dict]:
-    rows = await _fetch(
-        """
-        SELECT
-            d::date AS day,
-            round(coalesce(sum(s.audio_duration_total), 0) / 60.0, 1) AS audio_minutes,
-            count(s.id) AS total_sessions,
-            count(s.id) FILTER (WHERE s.status = 'completed') AS completed,
-            CASE WHEN count(s.id) > 0
-                THEN round(100.0 * count(s.id)
-                     FILTER (WHERE s.status = 'completed') / count(s.id), 1)
-                ELSE 0
-            END AS completion_pct
-        FROM generate_series(
-            (now() - make_interval(days => $1))::date,
-            now()::date,
-            '1 day'::interval
-        ) d
-        LEFT JOIN sessions s ON s.started_at::date = d::date
-        GROUP BY d::date
-        ORDER BY d::date
-        """,
-        days,
     )
     return [dict(r) for r in rows]
 

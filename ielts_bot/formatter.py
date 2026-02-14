@@ -1,5 +1,5 @@
 import html
-from datetime import datetime
+from datetime import date, datetime
 
 CRITERIA = [
     ("fluency_coherence", "Fluency & Coherence"),
@@ -157,103 +157,60 @@ def format_user_stats(stats: dict, recent: list[dict]) -> str:
 
 # ── Admin formatting ────────────────────────────────────
 
-def _trend(current, previous) -> str:
-    if not current or not previous or previous == 0:
-        return ""
-    diff = current - previous
-    pct = round(100 * diff / previous)
-    if diff > 0:
-        return f" <i>(+{pct}%)</i>"
-    if diff < 0:
-        return f" <i>({pct}%)</i>"
-    return ""
+def format_admin_dashboard(rows: list[dict]) -> str:
+    if not rows:
+        return "🔧 <b>Админ — Дашборд</b>\n\n<i>Нет данных</i>"
 
-
-def format_admin_overview(data: dict | None) -> str:
-    if not data:
-        return "⚠️ Нет данных"
-
-    completed = data["completed_sessions"]
-    total_s = data["total_sessions"]
-    compl_pct = round(100 * completed / total_s) if total_s else 0
-    avg_sess_per_user = round(completed / data["active_7d"], 1) if data["active_7d"] else 0
-
-    return "\n".join([
-        "🔧 <b>Админ-панель — Обзор</b>",
-        "",
-        "━━━━━━━━━━━━━━━",
-        "👥 <b>Пользователи</b>",
-        "━━━━━━━━━━━━━━━",
-        f"  Всего: <b>{data['total_users']}</b>"
-        f"{_trend(data['users_this_week'], data['users_last_week'])}",
-        "",
-        "  <b>Новые:</b>",
-        f"    24ч: <b>{data['new_users_24h']}</b>"
-        f"  •  7д: <b>{data['new_users_7d']}</b>"
-        f"  •  30д: <b>{data['new_users_30d']}</b>",
-        "",
-        "  <b>Активные:</b>",
-        f"    24ч: <b>{data['active_24h']}</b>"
-        f"  •  7д: <b>{data['active_7d']}</b>"
-        f"  •  30д: <b>{data['active_30d']}</b>",
-        "",
-        "━━━━━━━━━━━━━━━",
-        "📝 <b>Сессии</b>",
-        "━━━━━━━━━━━━━━━",
-        f"  Всего: <b>{total_s}</b>"
-        f"  (за 7д: <b>{data['sessions_this_week']}</b>"
-        f"{_trend(data['sessions_this_week'], data['sessions_last_week'])})",
-        f"  Завершено: <b>{completed}</b> ({compl_pct}%)"
-        f"  • Провалено: <b>{data['failed_sessions']}</b>",
-        f"  Ср. сессий / активный юзер (7д): <b>{avg_sess_per_user}</b>",
-        "",
-        "━━━━━━━━━━━━━━━",
-        "🎯 <b>Баллы и аудио</b>",
-        "━━━━━━━━━━━━━━━",
-        f"  Средний балл: <b>{_val(data['global_avg_band'])}</b>"
-        f"  • Лучший: <b>{_val(data['best_band'])}</b>",
-        f"  Аудио всего: <b>{_val(data['total_audio_min'])}</b> мин"
-        f"  • Ср. ответ: <b>{_val(data['avg_audio_sec'])}</b> сек",
-    ])
-
-
-def format_admin_scores(summary: dict | None, parts: list[dict]) -> str:
-    if not summary or not summary.get("total"):
-        return "🔧 <b>Админ-панель — Баллы</b>\n\n<i>Нет данных</i>"
+    today = date.today()
 
     lines = [
-        "🔧 <b>Админ-панель — Баллы</b>",
+        "🔧 <b>Админ — Дашборд</b>",
         "",
         "━━━━━━━━━━━━━━━",
-        "📊 <b>Глобальные показатели</b>",
+        "📋 <b>За последние 10 дней</b>",
         "━━━━━━━━━━━━━━━",
-        f"  Overall: <b>{_val(summary['avg_overall'])}</b>"
-        f"  (лучший: {_val(summary['best_overall'])}"
-        f"  • худший: {_val(summary['worst_overall'])})",
-        "",
-        f"  Fluency & Coherence: <b>{_val(summary['avg_fc'])}</b>",
-        f"  Lexical Resource: <b>{_val(summary['avg_lr'])}</b>",
-        f"  Grammar Range & Accuracy: <b>{_val(summary['avg_gra'])}</b>",
-        f"  Pronunciation: <b>{_val(summary['avg_pron'])}</b>",
     ]
 
-    if parts:
-        lines += [
-            "",
-            "━━━━━━━━━━━━━━━",
-            "📋 <b>По разделам</b>",
-            "━━━━━━━━━━━━━━━",
-        ]
-        for r in parts:
-            part = PART_NAMES.get(r["part"], f"Part {r['part']}")
-            total = r.get("cnt", 0)
-            completed = r.get("completed", 0)
-            audio = _val(r.get("audio_min"))
-            lines.append(
-                f"  {part}: <b>{completed}</b>/{total} сессий"
-                f"  • ∅ <b>{_val(r['avg_band'])}</b>"
-                f"  • {audio} мин"
-            )
+    for r in rows:
+        day = r["day"].strftime("%d.%m")
+        total = r["total_users"]
+        new = r["new_users"]
+        compl = r["completed"]
+        incompl = r["incomplete"]
+        mins = float(r["total_minutes"])
+        new_str = f"+{new}" if new else "0"
+        lines.append(
+            f"  <code>{day}</code>"
+            f"  👥{total} ({new_str})"
+            f"  ✅{compl} ❌{incompl}"
+            f"  ⏱{mins:.0f}м"
+        )
+
+    lines += [
+        "",
+        "━━━━━━━━━━━━━━━",
+        "📊 <b>Ретеншн (D1 / D3 / D7)</b>",
+        "━━━━━━━━━━━━━━━",
+    ]
+
+    for r in rows:
+        day = r["day"].strftime("%d.%m")
+        active = r["active_users"]
+        if active == 0:
+            lines.append(f"  <code>{day}</code>  — нет активных")
+            continue
+
+        days_ago = (today - r["day"]).days
+
+        d1 = f"{round(100 * r['ret_d1'] / active)}%" if days_ago >= 1 else "—"
+        d3 = f"{round(100 * r['ret_d3'] / active)}%" if days_ago >= 3 else "—"
+        d7 = f"{round(100 * r['ret_d7'] / active)}%" if days_ago >= 7 else "—"
+
+        lines.append(
+            f"  <code>{day}</code>"
+            f"  {active} акт"
+            f" → {d1} / {d3} / {d7}"
+        )
 
     return "\n".join(lines)
 

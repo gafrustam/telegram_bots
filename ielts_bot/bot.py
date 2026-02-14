@@ -26,8 +26,7 @@ from formatter import (
     format_assessment,
     format_error,
     format_user_stats,
-    format_admin_overview,
-    format_admin_scores,
+    format_admin_dashboard,
     format_admin_users,
     format_admin_outliers,
 )
@@ -237,16 +236,16 @@ async def cmd_admin(message: Message) -> None:
     if not database.is_available():
         await message.answer("⚠️ База данных недоступна.")
         return
-    await _send_admin_page(message.chat.id, "overview")
+    await _send_admin_page(message.chat.id, "dashboard")
 
 
 async def _send_admin_page(chat_id: int, page: str, edit_msg_id: int | None = None) -> None:
-    """Send or edit an admin page. For chart pages, sends photo + nav buttons."""
+    """Send or edit an admin page."""
     await bot.send_chat_action(chat_id, ChatAction.TYPING)
 
-    if page == "overview":
-        overview = await database.get_admin_overview()
-        text = format_admin_overview(overview)
+    if page == "dashboard":
+        rows = await database.get_admin_dashboard(10)
+        text = format_admin_dashboard(rows)
         if edit_msg_id:
             await bot.edit_message_text(text, chat_id, edit_msg_id,
                                         parse_mode=ParseMode.HTML,
@@ -256,9 +255,9 @@ async def _send_admin_page(chat_id: int, page: str, edit_msg_id: int | None = No
                                    parse_mode=ParseMode.HTML,
                                    reply_markup=admin_nav_keyboard(page))
 
-    elif page == "growth":
-        rows = await database.get_admin_growth(14)
-        chart_png = await asyncio.to_thread(charts.chart_growth, rows)
+    elif page == "histogram":
+        dist = await database.get_admin_user_score_distribution()
+        chart_png = await asyncio.to_thread(charts.chart_score_histogram, dist)
         if edit_msg_id:
             try:
                 await bot.delete_message(chat_id, edit_msg_id)
@@ -266,30 +265,8 @@ async def _send_admin_page(chat_id: int, page: str, edit_msg_id: int | None = No
                 pass
         await bot.send_photo(
             chat_id,
-            BufferedInputFile(chart_png, filename="growth.png"),
-            caption="📈 <b>Рост за 14 дней</b>",
-            parse_mode=ParseMode.HTML,
-            reply_markup=admin_nav_keyboard(page),
-        )
-
-    elif page == "scores":
-        trend, dist, summary, parts = await asyncio.gather(
-            database.get_admin_score_trend(14),
-            database.get_admin_score_distribution(),
-            database.get_admin_scores_summary(),
-            database.get_admin_part_distribution(),
-        )
-        chart_png = await asyncio.to_thread(charts.chart_scores, trend, dist)
-        text = format_admin_scores(summary, parts)
-        if edit_msg_id:
-            try:
-                await bot.delete_message(chat_id, edit_msg_id)
-            except Exception:
-                pass
-        await bot.send_photo(
-            chat_id,
-            BufferedInputFile(chart_png, filename="scores.png"),
-            caption=text[:1024],
+            BufferedInputFile(chart_png, filename="histogram.png"),
+            caption="📊 <b>Распределение среднего балла</b>",
             parse_mode=ParseMode.HTML,
             reply_markup=admin_nav_keyboard(page),
         )
@@ -305,22 +282,6 @@ async def _send_admin_page(chat_id: int, page: str, edit_msg_id: int | None = No
             await bot.send_message(chat_id, text,
                                    parse_mode=ParseMode.HTML,
                                    reply_markup=admin_nav_keyboard(page))
-
-    elif page == "usage":
-        rows = await database.get_admin_usage(14)
-        chart_png = await asyncio.to_thread(charts.chart_usage, rows)
-        if edit_msg_id:
-            try:
-                await bot.delete_message(chat_id, edit_msg_id)
-            except Exception:
-                pass
-        await bot.send_photo(
-            chat_id,
-            BufferedInputFile(chart_png, filename="usage.png"),
-            caption="⏱ <b>Нагрузка за 14 дней</b>",
-            parse_mode=ParseMode.HTML,
-            reply_markup=admin_nav_keyboard(page),
-        )
 
     elif page == "outliers":
         data = await database.get_admin_outliers()
@@ -341,10 +302,7 @@ async def admin_nav(callback: CallbackQuery, callback_data: AdminAction) -> None
         return
     page = callback_data.page
     await callback.answer()
-    # For text pages, edit in place; for chart pages, delete + send new
-    text_pages = {"overview", "users", "outliers"}
-    edit_id = callback.message.message_id if page in text_pages else callback.message.message_id
-    await _send_admin_page(callback.message.chat.id, page, edit_msg_id=edit_id)
+    await _send_admin_page(callback.message.chat.id, page, edit_msg_id=callback.message.message_id)
 
 
 # ── Menu button: Stats ───────────────────────────────────
@@ -383,7 +341,7 @@ async def handle_admin_button(message: Message, state: FSMContext) -> None:
     if not database.is_available():
         await message.answer("⚠️ База данных недоступна.")
         return
-    await _send_admin_page(message.chat.id, "overview")
+    await _send_admin_page(message.chat.id, "dashboard")
 
 
 # ── Part selection ───────────────────────────────────────
@@ -735,7 +693,8 @@ async def _run_assessment(message: Message, state: FSMContext) -> None:
                 await message.answer(chunk, parse_mode=ParseMode.HTML)
 
         await message.answer(
-            "Что дальше?",
+            "Если хочешь — попробуй ещё раз ту же тему. "
+            "Или просто выбери другой раздел в меню снизу 👇",
             reply_markup=results_keyboard(),
         )
 
@@ -748,7 +707,7 @@ async def _run_assessment(message: Message, state: FSMContext) -> None:
         )
         await state.set_state(SpeakingStates.viewing_results)
         await message.answer(
-            "Что дальше?",
+            "Можешь попробовать ещё раз или выбрать другой раздел 👇",
             reply_markup=results_keyboard(),
         )
 
@@ -823,6 +782,16 @@ async def handle_part_while_active(message: Message, state: FSMContext) -> None:
     current = await state.get_state()
     if current is None:
         await message.answer("Нажми /start, чтобы начать.")
+        return
+
+    # No active session yet or session already finished — switch freely
+    if current in (
+        SpeakingStates.choosing_topic.state,
+        SpeakingStates.viewing_results.state,
+    ):
+        await state.clear()
+        await state.set_state(SpeakingStates.choosing_part)
+        await handle_part_selection(message, state)
         return
 
     data = await state.get_data()

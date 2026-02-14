@@ -70,8 +70,9 @@ SCORING RULES:
 - The overall_band is the arithmetic mean of the four criteria, rounded to the nearest 0.5 (with .25 rounding UP to .5, and .75 rounding UP to the next whole number).
 - Each criterion must have 3 to 5 examples — concrete quotes or moments from the audio that justify the given band.
 - Examples must be SPECIFIC — cite actual phrases, words, pauses, or patterns you heard.
-- Where it adds value, show the correct or better alternative alongside the quote.
-- All explanations and recommendations must be in Russian.
+- Examples and quoted phrases MUST be written in English (as spoken by the candidate), not transliterated or translated into Russian.
+- Where it adds value, show the correct or better alternative alongside the quote (also in English).
+- All explanations and recommendations must be in Russian, but any quoted speech must remain in English.
 
 IMPORTANT: If the audio is too short, too noisy to assess, or not in English, return:
 {{
