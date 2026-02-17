@@ -85,6 +85,53 @@ async def _fetchval(query: str, *args: Any) -> Any:
         return None
 
 
+# ── Topic bank operations ──────────────────────────────
+
+async def get_random_topic(part: int, user_id: int) -> dict | None:
+    """Pick a weighted-random topic from the bank, avoiding recently used ones."""
+    # Get topics this user has already used (by topic name)
+    used = await _fetch(
+        """
+        SELECT DISTINCT topic FROM generated_topics
+        WHERE user_id = $1 AND part = $2 AND accepted = TRUE
+        """,
+        user_id, part,
+    )
+    used_topics = {r["topic"] for r in used}
+
+    # Get all bank topics for this part
+    rows = await _fetch(
+        "SELECT id, part, topic, weight, cue_card, questions FROM topic_bank WHERE part = $1",
+        part,
+    )
+    if not rows:
+        return None
+
+    # Filter out used topics; if all used, reset (allow all)
+    available = [r for r in rows if r["topic"] not in used_topics]
+    if not available:
+        available = list(rows)
+
+    # Weighted random selection
+    import random
+    weights = [float(r["weight"]) for r in available]
+    chosen = random.choices(available, weights=weights, k=1)[0]
+    return dict(chosen)
+
+
+async def get_last_part2_topic(user_id: int) -> str | None:
+    """Get the topic of the user's most recent completed Part 2 session."""
+    return await _fetchval(
+        """
+        SELECT s.topic FROM sessions s
+        WHERE s.user_id = $1 AND s.part = 2 AND s.status = 'completed'
+        ORDER BY s.completed_at DESC
+        LIMIT 1
+        """,
+        user_id,
+    )
+
+
 # ── User operations ─────────────────────────────────────
 
 async def upsert_user(
@@ -270,152 +317,82 @@ async def get_user_id_by_username(username: str) -> int | None:
 
 # ── Admin queries ───────────────────────────────────────
 
-async def get_admin_dashboard(days: int = 10) -> list[dict]:
-    rows = await _fetch(
+async def get_admin_summary_stats() -> dict:
+    """Return new/active/completed users, sessions, minutes for 3d/7d/30d windows."""
+    row = await _fetchrow(
         """
         SELECT
-            d::date AS day,
-            (SELECT count(*) FROM users
-             WHERE created_at::date <= d::date) AS total_users,
-            (SELECT count(*) FROM users
-             WHERE created_at::date = d::date) AS new_users,
-            (SELECT count(*) FROM sessions
-             WHERE started_at::date = d::date
-               AND status = 'completed') AS completed,
-            (SELECT count(*) FROM sessions
-             WHERE started_at::date = d::date
-               AND status != 'completed') AS incomplete,
-            (SELECT round(coalesce(sum(audio_duration_total), 0) / 60.0, 1)
-             FROM sessions
-             WHERE started_at::date = d::date
-               AND status = 'completed') AS total_minutes,
-            (SELECT count(DISTINCT user_id) FROM sessions
-             WHERE started_at::date = d::date) AS active_users,
-            (SELECT count(DISTINCT s1.user_id)
-             FROM sessions s1
-             WHERE s1.started_at::date = d::date
-               AND EXISTS (
-                   SELECT 1 FROM sessions s2
-                   WHERE s2.user_id = s1.user_id
-                     AND s2.started_at::date = d::date + 1
-               )
-            ) AS ret_d1,
-            (SELECT count(DISTINCT s1.user_id)
-             FROM sessions s1
-             WHERE s1.started_at::date = d::date
-               AND EXISTS (
-                   SELECT 1 FROM sessions s2
-                   WHERE s2.user_id = s1.user_id
-                     AND s2.started_at::date BETWEEN d::date + 1 AND d::date + 3
-               )
-            ) AS ret_d3,
-            (SELECT count(DISTINCT s1.user_id)
-             FROM sessions s1
-             WHERE s1.started_at::date = d::date
-               AND EXISTS (
-                   SELECT 1 FROM sessions s2
-                   WHERE s2.user_id = s1.user_id
-                     AND s2.started_at::date BETWEEN d::date + 1 AND d::date + 7
-               )
-            ) AS ret_d7
-        FROM generate_series(
-            (now() - make_interval(days => $1))::date,
-            now()::date,
-            '1 day'::interval
-        ) d
-        ORDER BY d::date
-        """,
-        days,
+            count(*) FILTER (WHERE u.created_at > now() - interval '3 days')  AS new_3d,
+            count(*) FILTER (WHERE u.created_at > now() - interval '7 days')  AS new_7d,
+            count(*) FILTER (WHERE u.created_at > now() - interval '30 days') AS new_30d,
+            count(*)                                                           AS total_users
+        FROM users u
+        """
     )
-    return [dict(r) for r in rows]
+    stats = dict(row) if row else {}
 
-
-async def get_admin_user_score_distribution() -> list[dict]:
-    rows = await _fetch(
+    row2 = await _fetchrow(
         """
         SELECT
-            (floor(avg_band * 2) / 2)::numeric AS band_bucket,
-            count(*) AS cnt
-        FROM (
-            SELECT user_id, avg(overall_band) AS avg_band
-            FROM assessments
-            GROUP BY user_id
-        ) user_avgs
-        GROUP BY band_bucket
-        ORDER BY band_bucket
+            count(DISTINCT user_id) FILTER (WHERE started_at > now() - interval '3 days')  AS active_3d,
+            count(DISTINCT user_id) FILTER (WHERE started_at > now() - interval '7 days')  AS active_7d,
+            count(DISTINCT user_id) FILTER (WHERE started_at > now() - interval '30 days') AS active_30d,
+
+            count(DISTINCT user_id) FILTER (WHERE status='completed' AND started_at > now() - interval '3 days')  AS completed_users_3d,
+            count(DISTINCT user_id) FILTER (WHERE status='completed' AND started_at > now() - interval '7 days')  AS completed_users_7d,
+            count(DISTINCT user_id) FILTER (WHERE status='completed' AND started_at > now() - interval '30 days') AS completed_users_30d,
+
+            count(*) FILTER (WHERE started_at > now() - interval '3 days')  AS sessions_3d,
+            count(*) FILTER (WHERE started_at > now() - interval '7 days')  AS sessions_7d,
+            count(*) FILTER (WHERE started_at > now() - interval '30 days') AS sessions_30d,
+
+            round(coalesce(sum(audio_duration_total) FILTER (WHERE status='completed' AND started_at > now() - interval '3 days'), 0) / 60.0, 1) AS minutes_3d,
+            round(coalesce(sum(audio_duration_total) FILTER (WHERE status='completed' AND started_at > now() - interval '7 days'), 0) / 60.0, 1) AS minutes_7d,
+            round(coalesce(sum(audio_duration_total) FILTER (WHERE status='completed' AND started_at > now() - interval '30 days'), 0) / 60.0, 1) AS minutes_30d
+        FROM sessions
         """
     )
-    return [dict(r) for r in rows]
+    if row2:
+        stats.update(dict(row2))
+    return stats
 
 
-async def get_admin_top_users(limit: int = 10) -> list[dict]:
-    rows = await _fetch(
+async def get_admin_retention() -> dict:
+    """Return D1/D3/D7/D14/D30 retention rates."""
+    row = await _fetchrow(
         """
+        WITH first_seen AS (
+            SELECT user_id, min(started_at::date) AS first_day
+            FROM sessions GROUP BY user_id
+        ),
+        cohort AS (
+            SELECT fs.user_id, fs.first_day
+            FROM first_seen fs
+            WHERE fs.first_day <= now()::date - 1
+        )
         SELECT
-            u.id, u.first_name, u.username,
-            count(DISTINCT a.id) AS session_count,
-            round(avg(a.overall_band)::numeric, 1) AS avg_band,
-            max(a.overall_band) AS best_band,
-            round(sum(s.audio_duration_total) / 60.0, 1) AS audio_min,
-            max(a.created_at) AS last_session
-        FROM users u
-        JOIN assessments a ON a.user_id = u.id
-        JOIN sessions s ON s.id = a.session_id
-        GROUP BY u.id, u.first_name, u.username
-        ORDER BY session_count DESC
-        LIMIT $1
-        """,
-        limit,
-    )
-    return [dict(r) for r in rows]
-
-
-async def get_admin_outliers() -> dict:
-    power_users = await _fetch(
-        """
-        SELECT u.first_name, u.username,
-               count(DISTINCT a.id) AS sessions,
-               round(sum(s.audio_duration_total) / 60.0, 1) AS audio_min,
-               round(avg(a.overall_band)::numeric, 1) AS avg_band
-        FROM users u
-        JOIN assessments a ON a.user_id = u.id
-        JOIN sessions s ON s.id = a.session_id
-        GROUP BY u.id, u.first_name, u.username
-        HAVING count(DISTINCT a.id) >= 5
-           OR sum(s.audio_duration_total) > 600
-        ORDER BY count(DISTINCT a.id) DESC
-        LIMIT 10
+            count(DISTINCT c.user_id) AS cohort_size,
+            count(DISTINCT c.user_id) FILTER (WHERE EXISTS (
+                SELECT 1 FROM sessions s WHERE s.user_id = c.user_id
+                  AND s.started_at::date >= c.first_day + 1
+            )) AS ret_d1,
+            count(DISTINCT c.user_id) FILTER (WHERE EXISTS (
+                SELECT 1 FROM sessions s WHERE s.user_id = c.user_id
+                  AND s.started_at::date >= c.first_day + 3
+            )) AS ret_d3,
+            count(DISTINCT c.user_id) FILTER (WHERE EXISTS (
+                SELECT 1 FROM sessions s WHERE s.user_id = c.user_id
+                  AND s.started_at::date >= c.first_day + 7
+            )) AS ret_d7,
+            count(DISTINCT c.user_id) FILTER (WHERE EXISTS (
+                SELECT 1 FROM sessions s WHERE s.user_id = c.user_id
+                  AND s.started_at::date >= c.first_day + 14
+            )) AS ret_d14,
+            count(DISTINCT c.user_id) FILTER (WHERE EXISTS (
+                SELECT 1 FROM sessions s WHERE s.user_id = c.user_id
+                  AND s.started_at::date >= c.first_day + 30
+            )) AS ret_d30
+        FROM cohort c
         """
     )
-    top_scorers = await _fetch(
-        """
-        SELECT u.first_name, u.username,
-               a.overall_band, s.part, s.topic, a.created_at
-        FROM assessments a
-        JOIN users u ON u.id = a.user_id
-        JOIN sessions s ON s.id = a.session_id
-        ORDER BY a.overall_band DESC
-        LIMIT 5
-        """
-    )
-    dropoffs = await _fetch(
-        """
-        SELECT u.first_name, u.username,
-               count(*) FILTER (WHERE s.status != 'completed') AS failed,
-               count(*) AS total,
-               round(100.0 * count(*) FILTER (WHERE s.status != 'completed')
-                     / count(*), 0) AS fail_pct
-        FROM users u
-        JOIN sessions s ON s.user_id = u.id
-        GROUP BY u.id, u.first_name, u.username
-        HAVING count(*) >= 3
-           AND count(*) FILTER (WHERE s.status != 'completed') > count(*) / 2
-        ORDER BY fail_pct DESC
-        LIMIT 5
-        """
-    )
-    return {
-        "power_users": [dict(r) for r in power_users],
-        "top_scorers": [dict(r) for r in top_scorers],
-        "dropoffs": [dict(r) for r in dropoffs],
-    }
+    return dict(row) if row else {}

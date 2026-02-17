@@ -21,7 +21,8 @@ PART_NAMES = {1: "Part 1", 2: "Part 2", 3: "Part 3"}
 
 
 def _band_emoji(band: float) -> str:
-    return BAND_EMOJI.get(band, "⚪")
+    rounded = round(band * 2) / 2
+    return BAND_EMOJI.get(rounded, "⚪")
 
 
 def _esc(text: str) -> str:
@@ -157,148 +158,45 @@ def format_user_stats(stats: dict, recent: list[dict]) -> str:
 
 # ── Admin formatting ────────────────────────────────────
 
-def format_admin_dashboard(rows: list[dict]) -> str:
-    if not rows:
-        return "🔧 <b>Админ — Дашборд</b>\n\n<i>Нет данных</i>"
+def format_admin_summary(stats: dict, retention: dict) -> str:
+    if not stats:
+        return "🔧 <b>Админ-панель</b>\n\n<i>Нет данных</i>"
 
-    today = date.today()
+    def v(key, default="0"):
+        val = stats.get(key)
+        return str(val) if val is not None else default
 
     lines = [
-        "🔧 <b>Админ — Дашборд</b>",
+        "🔧 <b>Админ-панель</b>",
         "",
-        "━━━━━━━━━━━━━━━",
-        "📋 <b>За последние 10 дней</b>",
-        "━━━━━━━━━━━━━━━",
-    ]
-
-    for r in rows:
-        day = r["day"].strftime("%d.%m")
-        total = r["total_users"]
-        new = r["new_users"]
-        compl = r["completed"]
-        incompl = r["incomplete"]
-        mins = float(r["total_minutes"])
-        new_str = f"+{new}" if new else "0"
-        lines.append(
-            f"  <code>{day}</code>"
-            f"  👥{total} ({new_str})"
-            f"  ✅{compl} ❌{incompl}"
-            f"  ⏱{mins:.0f}м"
-        )
-
-    lines += [
+        f"Всего пользователей: <b>{v('total_users')}</b>",
         "",
-        "━━━━━━━━━━━━━━━",
-        "📊 <b>Ретеншн (D1 / D3 / D7)</b>",
-        "━━━━━━━━━━━━━━━",
+        "━━━━━━━━━━━━━━━━━━━━━━━━",
+        "<code>              3д    7д    30д</code>",
+        "━━━━━━━━━━━━━━━━━━━━━━━━",
+        f"<code>Новые:    {v('new_3d'):>5} {v('new_7d'):>5} {v('new_30d'):>5}</code>",
+        f"<code>Активные: {v('active_3d'):>5} {v('active_7d'):>5} {v('active_30d'):>5}</code>",
+        f"<code>Завершили:{v('completed_users_3d'):>5} {v('completed_users_7d'):>5} {v('completed_users_30d'):>5}</code>",
+        f"<code>Сессий:   {v('sessions_3d'):>5} {v('sessions_7d'):>5} {v('sessions_30d'):>5}</code>",
+        f"<code>Минуты:   {v('minutes_3d'):>5} {v('minutes_7d'):>5} {v('minutes_30d'):>5}</code>",
     ]
 
-    for r in rows:
-        day = r["day"].strftime("%d.%m")
-        active = r["active_users"]
-        if active == 0:
-            lines.append(f"  <code>{day}</code>  — нет активных")
-            continue
+    cohort = retention.get("cohort_size", 0)
+    if cohort:
+        def pct(key):
+            val = retention.get(key, 0)
+            return f"{round(100 * val / cohort)}%"
 
-        days_ago = (today - r["day"]).days
-
-        d1 = f"{round(100 * r['ret_d1'] / active)}%" if days_ago >= 1 else "—"
-        d3 = f"{round(100 * r['ret_d3'] / active)}%" if days_ago >= 3 else "—"
-        d7 = f"{round(100 * r['ret_d7'] / active)}%" if days_ago >= 7 else "—"
-
-        lines.append(
-            f"  <code>{day}</code>"
-            f"  {active} акт"
-            f" → {d1} / {d3} / {d7}"
-        )
-
-    return "\n".join(lines)
-
-
-def format_admin_users(rows: list[dict]) -> str:
-    lines = [
-        "🔧 <b>Админ-панель — Пользователи</b>",
-        "",
-        "━━━━━━━━━━━━━━━",
-        "👥 <b>Топ по активности</b>",
-        "━━━━━━━━━━━━━━━",
-    ]
-    for i, r in enumerate(rows, 1):
-        name = _esc(r["first_name"] or "?")
-        uname = f" @{_esc(r['username'])}" if r.get("username") else ""
-        last = ""
-        if r.get("last_session"):
-            last = r["last_session"].strftime(" (%d.%m)")
-        lines.append(
-            f"  {i}. <b>{name}</b>{uname}\n"
-            f"      {r['session_count']} сесс."
-            f"  ∅ {_val(r['avg_band'])}"
-            f"  best {_val(r['best_band'])}"
-            f"  {_val(r.get('audio_min'))} мин{last}"
-        )
-    if not rows:
-        lines.append("  <i>Нет данных</i>")
-    return "\n".join(lines)
-
-
-def format_admin_outliers(data: dict) -> str:
-    lines = [
-        "🔧 <b>Админ-панель — Выбросы</b>",
-    ]
-
-    power = data.get("power_users", [])
-    if power:
         lines += [
             "",
-            "━━━━━━━━━━━━━━━",
-            "💪 <b>Power Users (5+ сессий или 10+ мин)</b>",
-            "━━━━━━━━━━━━━━━",
+            "━━━━━━━━━━━━━━━━━━━━━━━━",
+            f"📊 <b>Ретеншн</b> (когорта: {cohort})",
+            "━━━━━━━━━━━━━━━━━━━━━━━━",
+            f"  D1: <b>{pct('ret_d1')}</b>"
+            f"  D3: <b>{pct('ret_d3')}</b>"
+            f"  D7: <b>{pct('ret_d7')}</b>"
+            f"  D14: <b>{pct('ret_d14')}</b>"
+            f"  D30: <b>{pct('ret_d30')}</b>",
         ]
-        for r in power:
-            name = _esc(r["first_name"] or "?")
-            uname = f" @{_esc(r['username'])}" if r.get("username") else ""
-            lines.append(
-                f"  {name}{uname}: "
-                f"{r['sessions']} сесс., "
-                f"{_val(r.get('audio_min'))} мин, "
-                f"∅ {_val(r['avg_band'])}"
-            )
-
-    top = data.get("top_scorers", [])
-    if top:
-        lines += [
-            "",
-            "━━━━━━━━━━━━━━━",
-            "🏆 <b>Лучшие результаты</b>",
-            "━━━━━━━━━━━━━━━",
-        ]
-        for r in top:
-            name = _esc(r["first_name"] or "?")
-            uname = f" @{_esc(r['username'])}" if r.get("username") else ""
-            part = PART_NAMES.get(r["part"], f"Part {r['part']}")
-            dt = r["created_at"].strftime("%d.%m")
-            lines.append(
-                f"  {name}{uname}: "
-                f"<b>{r['overall_band']}</b> — {part} «{_esc(r['topic'])}» ({dt})"
-            )
-
-    drops = data.get("dropoffs", [])
-    if drops:
-        lines += [
-            "",
-            "━━━━━━━━━━━━━━━",
-            "📉 <b>Высокий % недозавершений</b>",
-            "━━━━━━━━━━━━━━━",
-        ]
-        for r in drops:
-            name = _esc(r["first_name"] or "?")
-            uname = f" @{_esc(r['username'])}" if r.get("username") else ""
-            lines.append(
-                f"  {name}{uname}: "
-                f"{r['failed']}/{r['total']} провалено ({r['fail_pct']}%)"
-            )
-
-    if not power and not top and not drops:
-        lines.append("\n<i>Пока недостаточно данных для выбросов</i>")
 
     return "\n".join(lines)

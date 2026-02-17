@@ -62,3 +62,14 @@ DO $$ BEGIN
     ALTER TABLE sessions ADD COLUMN topic_id INTEGER REFERENCES generated_topics(id);
 EXCEPTION WHEN duplicate_column THEN NULL;
 END $$;
+
+-- Topic bank: curated real IELTS exam topics
+CREATE TABLE IF NOT EXISTS topic_bank (
+    id        SERIAL PRIMARY KEY,
+    part      SMALLINT NOT NULL CHECK (part IN (1, 2, 3)),
+    topic     TEXT NOT NULL,
+    weight    REAL NOT NULL DEFAULT 1.0,
+    cue_card  TEXT,
+    questions JSONB,
+    UNIQUE (part, topic)
+);

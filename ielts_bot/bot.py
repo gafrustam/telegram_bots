@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import re
 import tempfile
 
 from dotenv import load_dotenv
@@ -21,14 +22,11 @@ from aiogram.types import (
 
 import database
 from assessor import assess_part1, assess_part2, assess_part3, _get_duration_seconds
-import charts
 from formatter import (
     format_assessment,
     format_error,
     format_user_stats,
-    format_admin_dashboard,
-    format_admin_users,
-    format_admin_outliers,
+    format_admin_summary,
 )
 from keyboards import (
     ADMIN_BTN,
@@ -36,14 +34,13 @@ from keyboards import (
     PART2_BTN,
     PART3_BTN,
     STATS_BTN,
-    admin_nav_keyboard,
     interrupt_keyboard,
     main_menu_keyboard,
     results_keyboard,
     topic_keyboard,
 )
 from questions import generate_session
-from states import AdminAction, InterruptAction, ResultAction, SpeakingStates, TopicAction
+from states import InterruptAction, ResultAction, SpeakingStates, TopicAction
 from tts import text_to_voice
 
 logging.basicConfig(
@@ -236,73 +233,11 @@ async def cmd_admin(message: Message) -> None:
     if not database.is_available():
         await message.answer("⚠️ База данных недоступна.")
         return
-    await _send_admin_page(message.chat.id, "dashboard")
-
-
-async def _send_admin_page(chat_id: int, page: str, edit_msg_id: int | None = None) -> None:
-    """Send or edit an admin page."""
-    await bot.send_chat_action(chat_id, ChatAction.TYPING)
-
-    if page == "dashboard":
-        rows = await database.get_admin_dashboard(10)
-        text = format_admin_dashboard(rows)
-        if edit_msg_id:
-            await bot.edit_message_text(text, chat_id, edit_msg_id,
-                                        parse_mode=ParseMode.HTML,
-                                        reply_markup=admin_nav_keyboard(page))
-        else:
-            await bot.send_message(chat_id, text,
-                                   parse_mode=ParseMode.HTML,
-                                   reply_markup=admin_nav_keyboard(page))
-
-    elif page == "histogram":
-        dist = await database.get_admin_user_score_distribution()
-        chart_png = await asyncio.to_thread(charts.chart_score_histogram, dist)
-        if edit_msg_id:
-            try:
-                await bot.delete_message(chat_id, edit_msg_id)
-            except Exception:
-                pass
-        await bot.send_photo(
-            chat_id,
-            BufferedInputFile(chart_png, filename="histogram.png"),
-            caption="📊 <b>Распределение среднего балла</b>",
-            parse_mode=ParseMode.HTML,
-            reply_markup=admin_nav_keyboard(page),
-        )
-
-    elif page == "users":
-        rows = await database.get_admin_top_users(10)
-        text = format_admin_users(rows)
-        if edit_msg_id:
-            await bot.edit_message_text(text, chat_id, edit_msg_id,
-                                        parse_mode=ParseMode.HTML,
-                                        reply_markup=admin_nav_keyboard(page))
-        else:
-            await bot.send_message(chat_id, text,
-                                   parse_mode=ParseMode.HTML,
-                                   reply_markup=admin_nav_keyboard(page))
-
-    elif page == "outliers":
-        data = await database.get_admin_outliers()
-        text = format_admin_outliers(data)
-        if edit_msg_id:
-            await bot.edit_message_text(text, chat_id, edit_msg_id,
-                                        parse_mode=ParseMode.HTML,
-                                        reply_markup=admin_nav_keyboard(page))
-        else:
-            await bot.send_message(chat_id, text,
-                                   parse_mode=ParseMode.HTML,
-                                   reply_markup=admin_nav_keyboard(page))
-
-
-@router.callback_query(AdminAction.filter())
-async def admin_nav(callback: CallbackQuery, callback_data: AdminAction) -> None:
-    if not _is_admin(callback.from_user.id, callback.from_user.username):
-        return
-    page = callback_data.page
-    await callback.answer()
-    await _send_admin_page(callback.message.chat.id, page, edit_msg_id=callback.message.message_id)
+    await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
+    stats = await database.get_admin_summary_stats()
+    retention = await database.get_admin_retention()
+    text = format_admin_summary(stats, retention)
+    await message.answer(text, parse_mode=ParseMode.HTML)
 
 
 # ── Menu button: Stats ───────────────────────────────────
@@ -341,7 +276,39 @@ async def handle_admin_button(message: Message, state: FSMContext) -> None:
     if not database.is_available():
         await message.answer("⚠️ База данных недоступна.")
         return
-    await _send_admin_page(message.chat.id, "dashboard")
+    await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
+    stats = await database.get_admin_summary_stats()
+    retention = await database.get_admin_retention()
+    text = format_admin_summary(stats, retention)
+    await message.answer(text, parse_mode=ParseMode.HTML)
+
+
+# ── Topic generation helper ──────────────────────────────
+
+async def _generate_topic_session(
+    part: int, user_id: int, related_topic: str | None = None,
+) -> dict:
+    """Pick a topic from the bank and generate questions for it."""
+    bank_topic = await database.get_random_topic(part, user_id)
+
+    if bank_topic:
+        topic_name = bank_topic["topic"]
+        cue_card_template = bank_topic.get("cue_card")
+        session = await generate_session(
+            part,
+            topic=topic_name,
+            cue_card_template=cue_card_template if part == 2 else None,
+            related_topic=related_topic if part == 3 else None,
+        )
+        # Ensure topic name from bank is used
+        session.setdefault("topic", topic_name)
+    else:
+        session = await generate_session(
+            part,
+            related_topic=related_topic if part == 3 else None,
+        )
+
+    return session
 
 
 # ── Part selection ───────────────────────────────────────
@@ -357,8 +324,13 @@ async def handle_part_selection(message: Message, state: FSMContext) -> None:
     )
     await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
 
+    # For Part 3, try to link to the user's last Part 2 topic
+    related_topic = None
+    if part == 3:
+        related_topic = await database.get_last_part2_topic(message.from_user.id)
+
     try:
-        session = await generate_session(part)
+        session = await _generate_topic_session(part, message.from_user.id, related_topic)
     except Exception:
         logger.exception("Failed to generate session")
         await message.answer(
@@ -414,7 +386,7 @@ async def handle_another_topic(callback: CallbackQuery, state: FSMContext) -> No
     await callback.answer("Генерирую новую тему...")
 
     try:
-        session = await generate_session(part)
+        session = await _generate_topic_session(part, callback.from_user.id)
     except Exception:
         logger.exception("Failed to generate session")
         await callback.answer("Ошибка генерации, попробуйте ещё раз", show_alert=True)
@@ -486,6 +458,119 @@ async def handle_accept_topic(callback: CallbackQuery, state: FSMContext) -> Non
         await _send_question(callback.message, state, 0)
 
 
+# ── Custom topic ──────────────────────────────────────────
+
+CUSTOM_TOPIC_EXAMPLE = (
+    "✏️ <b>Своя тема</b>\n"
+    "\n"
+    "Отправь тему и вопросы в одном сообщении.\n"
+    "\n"
+    "<b>Формат для Part 1 / Part 3:</b>\n"
+    "<code>Topic: Technology\n"
+    "1. How often do you use technology?\n"
+    "2. What is your favorite gadget?\n"
+    "3. Has technology changed the way you communicate?\n"
+    "4. Do you think we rely too much on technology?</code>\n"
+    "\n"
+    "<b>Формат для Part 2:</b>\n"
+    "<code>Topic: A memorable trip\n"
+    "Describe a memorable trip you took.\n"
+    "You should say:\n"
+    "- where you went\n"
+    "- who you went with\n"
+    "- what you did\n"
+    "and explain why it was memorable.</code>"
+)
+
+
+@router.callback_query(TopicAction.filter(F.action == "custom"), SpeakingStates.choosing_topic)
+async def handle_custom_topic(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.message.answer(
+        CUSTOM_TOPIC_EXAMPLE,
+        parse_mode=ParseMode.HTML,
+    )
+    await state.set_state(SpeakingStates.entering_custom_topic)
+
+
+@router.message(SpeakingStates.entering_custom_topic, F.text)
+async def handle_custom_topic_text(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    part = data["part"]
+    text = message.text.strip()
+
+    # Parse topic
+    lines = text.split("\n")
+    topic = "Custom topic"
+    content_lines = []
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.lower().startswith("topic:"):
+            topic = stripped[6:].strip()
+        else:
+            content_lines.append(stripped)
+
+    # Remove empty leading lines
+    while content_lines and not content_lines[0]:
+        content_lines.pop(0)
+
+    questions = []
+    cue_card = ""
+
+    if part == 2:
+        # Everything after topic line is the cue card
+        cue_card = "\n".join(content_lines).strip()
+        if not cue_card:
+            await message.answer(
+                "Не удалось распознать карточку. Попробуй ещё раз в формате выше.",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+    else:
+        # Parse numbered questions
+        for line in content_lines:
+            # Strip numbering like "1.", "2)", "1 -", etc.
+            cleaned = re.sub(r"^\d+[\.\)\-\s]+", "", line).strip()
+            if cleaned:
+                questions.append(cleaned)
+
+        if len(questions) < 2:
+            await message.answer(
+                "Нужно минимум 2 вопроса. Попробуй ещё раз в формате выше.",
+                parse_mode=ParseMode.HTML,
+            )
+            return
+
+    gen_topic_id = await database.save_generated_topic(
+        user_id=message.from_user.id,
+        part=part, topic=topic,
+        questions=questions or None,
+        cue_card=cue_card or None,
+    )
+
+    await state.update_data(
+        topic=topic,
+        questions=questions,
+        cue_card=cue_card,
+        gen_topic_id=gen_topic_id,
+    )
+
+    preview = f"📝 <b>{PART_NAMES[part]}</b>\n\nТема: <b>{topic}</b>\n"
+    if part == 2:
+        preview += f"\n{cue_card}\n"
+    else:
+        preview += f"\nВопросов: {len(questions)}\n"
+
+    await message.answer(
+        preview + "\n✅ Тема принята!",
+        parse_mode=ParseMode.HTML,
+        reply_markup=topic_keyboard(),
+    )
+    await state.set_state(SpeakingStates.choosing_topic)
+
+
 # ── Part 2 countdown + start ─────────────────────────────
 
 async def _start_part2_countdown(chat_id: int, state: FSMContext) -> None:
@@ -499,42 +584,37 @@ async def _start_part2_countdown(chat_id: int, state: FSMContext) -> None:
         parse_mode=ParseMode.HTML,
     )
 
-    countdown = [(15, "0:45"), (15, "0:30"), (10, "0:20"), (5, "0:15"),
-                 (5, "0:10"), (5, "0:05"), (5, None)]
-
-    for sleep_sec, label in countdown:
-        await asyncio.sleep(sleep_sec)
+    for remaining in range(55, 0, -5):
+        await asyncio.sleep(5)
         current = await state.get_state()
         if current != SpeakingStates.part2_preparing.state:
-            return  # user left (sent voice, /start, etc.)
-        if label:
-            try:
-                await bot.edit_message_text(
-                    f"⏱ <b>Подготовка: {label}</b>\n\n"
-                    "<i>Можешь оставлять текстовые заметки прямо здесь.\n"
-                    "Когда будешь готов раньше — просто запиши голосовое.</i>",
-                    chat_id, msg.message_id,
-                    parse_mode=ParseMode.HTML,
-                )
-            except Exception:
-                pass
+            return
+        m, s = divmod(remaining, 60)
+        label = f"{m}:{s:02d}"
+        try:
+            await bot.edit_message_text(
+                f"⏱ <b>Подготовка: {label}</b>\n\n"
+                "<i>Можешь оставлять текстовые заметки прямо здесь.\n"
+                "Когда будешь готов раньше — просто запиши голосовое.</i>",
+                chat_id, msg.message_id,
+                parse_mode=ParseMode.HTML,
+            )
+        except Exception:
+            pass
 
+    await asyncio.sleep(5)
     current = await state.get_state()
     if current != SpeakingStates.part2_preparing.state:
         return
 
     await state.set_state(SpeakingStates.part2_answering)
     try:
-        await bot.edit_message_text(
-            "⏱ <b>Время подготовки вышло!</b>",
-            chat_id, msg.message_id,
-            parse_mode=ParseMode.HTML,
-        )
+        await bot.delete_message(chat_id, msg.message_id)
     except Exception:
         pass
     await bot.send_message(
         chat_id,
-        "🎤 Запиши голосовое сообщение (до 2 минут).",
+        "⏱ Время подготовки вышло!\n\n🎤 Запиши голосовое сообщение (до 2 минут).",
         parse_mode=ParseMode.HTML,
     )
 
@@ -766,6 +846,7 @@ async def handle_back_to_menu(callback: CallbackQuery, state: FSMContext) -> Non
 
 ACTIVE_STATES = {
     SpeakingStates.choosing_topic,
+    SpeakingStates.entering_custom_topic,
     SpeakingStates.part1_answering,
     SpeakingStates.part2_preparing,
     SpeakingStates.part2_answering,
@@ -787,6 +868,7 @@ async def handle_part_while_active(message: Message, state: FSMContext) -> None:
     # No active session yet or session already finished — switch freely
     if current in (
         SpeakingStates.choosing_topic.state,
+        SpeakingStates.entering_custom_topic.state,
         SpeakingStates.viewing_results.state,
     ):
         await state.clear()
@@ -841,8 +923,13 @@ async def handle_interrupt_new(
     )
     await bot.send_chat_action(callback.message.chat.id, ChatAction.TYPING)
 
+    # For Part 3, try to link to the user's last Part 2 topic
+    related_topic = None
+    if new_part == 3:
+        related_topic = await database.get_last_part2_topic(callback.from_user.id)
+
     try:
-        session = await generate_session(new_part)
+        session = await _generate_topic_session(new_part, callback.from_user.id, related_topic)
     except Exception:
         logger.exception("Failed to generate session")
         await callback.message.answer(

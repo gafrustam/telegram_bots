@@ -5,7 +5,7 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
 )
 
-from states import TopicAction, ResultAction, AdminAction, InterruptAction
+from states import TopicAction, ResultAction, InterruptAction
 
 PART1_BTN = "🗣 Part 1 — Interview"
 PART2_BTN = "🎙 Part 2 — Long Turn"
@@ -39,6 +39,10 @@ def topic_keyboard() -> InlineKeyboardMarkup:
             text="🔄 Другая тема",
             callback_data=TopicAction(action="another").pack(),
         )],
+        [InlineKeyboardButton(
+            text="✏️ Своя тема",
+            callback_data=TopicAction(action="custom").pack(),
+        )],
     ])
 
 
@@ -47,6 +51,10 @@ def results_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(
             text="🔁 Пройти заново",
             callback_data=ResultAction(action="retry").pack(),
+        )],
+        [InlineKeyboardButton(
+            text="📋 В меню",
+            callback_data=ResultAction(action="menu").pack(),
         )],
     ])
 
@@ -67,19 +75,3 @@ def interrupt_keyboard(new_part: int) -> InlineKeyboardMarkup:
     ])
 
 
-def admin_nav_keyboard(current: str) -> InlineKeyboardMarkup:
-    pages = [
-        ("📋 Дашборд", "dashboard"),
-        ("📊 Гистограмма", "histogram"),
-        ("👥 Юзеры", "users"),
-        ("⚡ Выбросы", "outliers"),
-    ]
-    buttons = [
-        InlineKeyboardButton(
-            text=label,
-            callback_data=AdminAction(page=page).pack(),
-        )
-        for label, page in pages
-        if page != current
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=[buttons])
