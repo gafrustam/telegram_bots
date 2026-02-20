@@ -98,7 +98,8 @@ HELP_TEXT = (
     "<b>Команды:</b>\n"
     "  /start   — Главное меню\n"
     "  /help    — Эта справка\n"
-    "  /mystats — Моя статистика"
+    "  /mystats — Моя статистика\n"
+    "  /cancel  — Отменить текущую сессию"
 )
 
 PROCESSING_TEXT = (
@@ -161,6 +162,9 @@ PART_INSTRUCTIONS = {
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    if db_session_id := data.get("db_session_id"):
+        await database.fail_session(db_session_id)
     await state.clear()
     user = message.from_user
     await database.upsert_user(
@@ -189,6 +193,23 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
 @router.message(Command("help"))
 async def cmd_help(message: Message) -> None:
     await message.answer(HELP_TEXT, parse_mode=ParseMode.HTML)
+
+
+# ── /cancel ──────────────────────────────────────────────
+
+@router.message(Command("cancel"))
+async def cmd_cancel(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    if db_session_id := data.get("db_session_id"):
+        await database.fail_session(db_session_id)
+    await state.clear()
+    await message.answer(
+        "Сессия отменена. Выбери раздел экзамена:",
+        reply_markup=main_menu_keyboard(
+            is_admin=_is_admin(message.from_user.id, message.from_user.username),
+        ),
+    )
+    await state.set_state(SpeakingStates.choosing_part)
 
 
 # ── /mystats ─────────────────────────────────────────────
@@ -460,19 +481,25 @@ async def handle_accept_topic(callback: CallbackQuery, state: FSMContext) -> Non
 
 # ── Custom topic ──────────────────────────────────────────
 
-CUSTOM_TOPIC_EXAMPLE = (
+CUSTOM_TOPIC_QA = (
     "✏️ <b>Своя тема</b>\n"
     "\n"
     "Отправь тему и вопросы в одном сообщении.\n"
     "\n"
-    "<b>Формат для Part 1 / Part 3:</b>\n"
+    "<b>Формат:</b>\n"
     "<code>Topic: Technology\n"
     "1. How often do you use technology?\n"
     "2. What is your favorite gadget?\n"
     "3. Has technology changed the way you communicate?\n"
-    "4. Do you think we rely too much on technology?</code>\n"
+    "4. Do you think we rely too much on technology?</code>"
+)
+
+CUSTOM_TOPIC_CUE_CARD = (
+    "✏️ <b>Своя тема</b>\n"
     "\n"
-    "<b>Формат для Part 2:</b>\n"
+    "Отправь тему и карточку в одном сообщении.\n"
+    "\n"
+    "<b>Формат:</b>\n"
     "<code>Topic: A memorable trip\n"
     "Describe a memorable trip you took.\n"
     "You should say:\n"
@@ -485,10 +512,13 @@ CUSTOM_TOPIC_EXAMPLE = (
 
 @router.callback_query(TopicAction.filter(F.action == "custom"), SpeakingStates.choosing_topic)
 async def handle_custom_topic(callback: CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    part = data["part"]
     await callback.answer()
     await callback.message.edit_reply_markup(reply_markup=None)
+    example = CUSTOM_TOPIC_CUE_CARD if part == 2 else CUSTOM_TOPIC_QA
     await callback.message.answer(
-        CUSTOM_TOPIC_EXAMPLE,
+        example,
         parse_mode=ParseMode.HTML,
     )
     await state.set_state(SpeakingStates.entering_custom_topic)
@@ -549,12 +579,26 @@ async def handle_custom_topic_text(message: Message, state: FSMContext) -> None:
         questions=questions or None,
         cue_card=cue_card or None,
     )
+    await database.mark_topic_accepted(gen_topic_id)
+
+    db_session_id = await database.create_session(
+        user_id=message.from_user.id,
+        part=part,
+        topic=topic,
+        questions=questions or None,
+        cue_card=cue_card or None,
+        topic_id=gen_topic_id,
+    )
 
     await state.update_data(
         topic=topic,
         questions=questions,
         cue_card=cue_card,
         gen_topic_id=gen_topic_id,
+        db_session_id=db_session_id,
+        current_q_index=0,
+        audio_file_ids=[],
+        audio_durations=[],
     )
 
     preview = f"📝 <b>{PART_NAMES[part]}</b>\n\nТема: <b>{topic}</b>\n"
@@ -563,12 +607,17 @@ async def handle_custom_topic_text(message: Message, state: FSMContext) -> None:
     else:
         preview += f"\nВопросов: {len(questions)}\n"
 
-    await message.answer(
-        preview + "\n✅ Тема принята!",
-        parse_mode=ParseMode.HTML,
-        reply_markup=topic_keyboard(),
-    )
-    await state.set_state(SpeakingStates.choosing_topic)
+    await message.answer(preview + "\n✅ Тема принята! Начинаем.", parse_mode=ParseMode.HTML)
+
+    if part == 2:
+        asyncio.create_task(_start_part2_countdown(message.chat.id, state))
+    else:
+        answering_state = (
+            SpeakingStates.part1_answering if part == 1
+            else SpeakingStates.part3_answering
+        )
+        await state.set_state(answering_state)
+        await _send_question(message, state, 0)
 
 
 # ── Part 2 countdown + start ─────────────────────────────
@@ -576,11 +625,19 @@ async def handle_custom_topic_text(message: Message, state: FSMContext) -> None:
 async def _start_part2_countdown(chat_id: int, state: FSMContext) -> None:
     await state.set_state(SpeakingStates.part2_preparing)
 
+    data = await state.get_data()
+    cue_card = data.get("cue_card", "")
+
+    def _build_countdown_text(label: str) -> str:
+        text = f"⏱ <b>Подготовка: {label}</b>"
+        if cue_card:
+            text += f"\n\n📋 <b>Карточка:</b>\n{cue_card}"
+        text += "\n\n<i>Когда будешь готов — запиши голосовое сообщение.</i>"
+        return text
+
     msg = await bot.send_message(
         chat_id,
-        "⏱ <b>Подготовка: 1:00</b>\n\n"
-        "<i>Можешь оставлять текстовые заметки прямо здесь.\n"
-        "Когда будешь готов раньше — просто запиши голосовое.</i>",
+        _build_countdown_text("1:00"),
         parse_mode=ParseMode.HTML,
     )
 
@@ -590,12 +647,9 @@ async def _start_part2_countdown(chat_id: int, state: FSMContext) -> None:
         if current != SpeakingStates.part2_preparing.state:
             return
         m, s = divmod(remaining, 60)
-        label = f"{m}:{s:02d}"
         try:
             await bot.edit_message_text(
-                f"⏱ <b>Подготовка: {label}</b>\n\n"
-                "<i>Можешь оставлять текстовые заметки прямо здесь.\n"
-                "Когда будешь готов раньше — просто запиши голосовое.</i>",
+                _build_countdown_text(f"{m}:{s:02d}"),
                 chat_id, msg.message_id,
                 parse_mode=ParseMode.HTML,
             )
@@ -635,12 +689,13 @@ async def _send_question(message: Message, state: FSMContext, index: int) -> Non
         await bot.send_voice(
             chat_id=message.chat.id,
             voice=voice_file,
-            caption=f"Вопрос {index + 1}/{total}\n🎤 Ответьте голосовым сообщением.",
+            caption=f"Вопрос {index + 1}/{total}: <b>{question}</b>\n\n🎤 Ответьте голосовым сообщением.",
+            parse_mode=ParseMode.HTML,
         )
     except Exception:
         logger.exception("TTS failed, sending text only")
         await message.answer(
-            f"❓ <i>{question}</i>\n\n"
+            f"❓ Вопрос {index + 1}/{total}: <i>{question}</i>\n\n"
             f"🎤 Ответьте голосовым сообщением.",
             parse_mode=ParseMode.HTML,
         )
@@ -986,6 +1041,12 @@ async def handle_text_during_part2(message: Message) -> None:
     )
 
 
+@router.message(SpeakingStates.assessing, F.text)
+@router.message(SpeakingStates.assessing, F.voice)
+async def handle_during_assessing(message: Message) -> None:
+    await message.answer("⏳ Анализирую ответы, подождите немного...")
+
+
 @router.message(F.voice)
 async def handle_unexpected_voice(message: Message, state: FSMContext) -> None:
     current = await state.get_state()
@@ -1040,6 +1101,7 @@ async def _set_bot_commands() -> None:
         BotCommand(command="start", description="Главное меню"),
         BotCommand(command="help", description="Справка"),
         BotCommand(command="mystats", description="Моя статистика"),
+        BotCommand(command="cancel", description="Отменить текущую сессию"),
     ])
 
 

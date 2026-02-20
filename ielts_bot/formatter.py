@@ -171,14 +171,14 @@ def format_admin_summary(stats: dict, retention: dict) -> str:
         "",
         f"Всего пользователей: <b>{v('total_users')}</b>",
         "",
-        "━━━━━━━━━━━━━━━━━━━━━━━━",
-        "<code>              3д    7д    30д</code>",
-        "━━━━━━━━━━━━━━━━━━━━━━━━",
-        f"<code>Новые:    {v('new_3d'):>5} {v('new_7d'):>5} {v('new_30d'):>5}</code>",
-        f"<code>Активные: {v('active_3d'):>5} {v('active_7d'):>5} {v('active_30d'):>5}</code>",
-        f"<code>Завершили:{v('completed_users_3d'):>5} {v('completed_users_7d'):>5} {v('completed_users_30d'):>5}</code>",
-        f"<code>Сессий:   {v('sessions_3d'):>5} {v('sessions_7d'):>5} {v('sessions_30d'):>5}</code>",
-        f"<code>Минуты:   {v('minutes_3d'):>5} {v('minutes_7d'):>5} {v('minutes_30d'):>5}</code>",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        "<code>           1д   2д   3д   7д  14д  30д</code>",
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+        f"<code>Новые:    {v('new_1d'):>4}{v('new_2d'):>5}{v('new_3d'):>5}{v('new_7d'):>5}{v('new_14d'):>5}{v('new_30d'):>5}</code>",
+        f"<code>Активные: {v('active_1d'):>4}{v('active_2d'):>5}{v('active_3d'):>5}{v('active_7d'):>5}{v('active_14d'):>5}{v('active_30d'):>5}</code>",
+        f"<code>Заверш:   {v('completed_users_1d'):>4}{v('completed_users_2d'):>5}{v('completed_users_3d'):>5}{v('completed_users_7d'):>5}{v('completed_users_14d'):>5}{v('completed_users_30d'):>5}</code>",
+        f"<code>Сессий:   {v('sessions_1d'):>4}{v('sessions_2d'):>5}{v('sessions_3d'):>5}{v('sessions_7d'):>5}{v('sessions_14d'):>5}{v('sessions_30d'):>5}</code>",
+        f"<code>Минуты:   {v('minutes_1d'):>4}{v('minutes_2d'):>5}{v('minutes_3d'):>5}{v('minutes_7d'):>5}{v('minutes_14d'):>5}{v('minutes_30d'):>5}</code>",
     ]
 
     cohort = retention.get("cohort_size", 0)

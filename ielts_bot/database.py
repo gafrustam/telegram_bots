@@ -318,12 +318,15 @@ async def get_user_id_by_username(username: str) -> int | None:
 # ── Admin queries ───────────────────────────────────────
 
 async def get_admin_summary_stats() -> dict:
-    """Return new/active/completed users, sessions, minutes for 3d/7d/30d windows."""
+    """Return new/active/completed users, sessions, minutes for 1d/2d/3d/7d/14d/30d windows."""
     row = await _fetchrow(
         """
         SELECT
+            count(*) FILTER (WHERE u.created_at > now() - interval '1 day')   AS new_1d,
+            count(*) FILTER (WHERE u.created_at > now() - interval '2 days')  AS new_2d,
             count(*) FILTER (WHERE u.created_at > now() - interval '3 days')  AS new_3d,
             count(*) FILTER (WHERE u.created_at > now() - interval '7 days')  AS new_7d,
+            count(*) FILTER (WHERE u.created_at > now() - interval '14 days') AS new_14d,
             count(*) FILTER (WHERE u.created_at > now() - interval '30 days') AS new_30d,
             count(*)                                                           AS total_users
         FROM users u
@@ -334,21 +337,33 @@ async def get_admin_summary_stats() -> dict:
     row2 = await _fetchrow(
         """
         SELECT
+            count(DISTINCT user_id) FILTER (WHERE started_at > now() - interval '1 day')   AS active_1d,
+            count(DISTINCT user_id) FILTER (WHERE started_at > now() - interval '2 days')  AS active_2d,
             count(DISTINCT user_id) FILTER (WHERE started_at > now() - interval '3 days')  AS active_3d,
             count(DISTINCT user_id) FILTER (WHERE started_at > now() - interval '7 days')  AS active_7d,
+            count(DISTINCT user_id) FILTER (WHERE started_at > now() - interval '14 days') AS active_14d,
             count(DISTINCT user_id) FILTER (WHERE started_at > now() - interval '30 days') AS active_30d,
 
+            count(DISTINCT user_id) FILTER (WHERE status='completed' AND started_at > now() - interval '1 day')   AS completed_users_1d,
+            count(DISTINCT user_id) FILTER (WHERE status='completed' AND started_at > now() - interval '2 days')  AS completed_users_2d,
             count(DISTINCT user_id) FILTER (WHERE status='completed' AND started_at > now() - interval '3 days')  AS completed_users_3d,
             count(DISTINCT user_id) FILTER (WHERE status='completed' AND started_at > now() - interval '7 days')  AS completed_users_7d,
+            count(DISTINCT user_id) FILTER (WHERE status='completed' AND started_at > now() - interval '14 days') AS completed_users_14d,
             count(DISTINCT user_id) FILTER (WHERE status='completed' AND started_at > now() - interval '30 days') AS completed_users_30d,
 
+            count(*) FILTER (WHERE started_at > now() - interval '1 day')   AS sessions_1d,
+            count(*) FILTER (WHERE started_at > now() - interval '2 days')  AS sessions_2d,
             count(*) FILTER (WHERE started_at > now() - interval '3 days')  AS sessions_3d,
             count(*) FILTER (WHERE started_at > now() - interval '7 days')  AS sessions_7d,
+            count(*) FILTER (WHERE started_at > now() - interval '14 days') AS sessions_14d,
             count(*) FILTER (WHERE started_at > now() - interval '30 days') AS sessions_30d,
 
-            round(coalesce(sum(audio_duration_total) FILTER (WHERE status='completed' AND started_at > now() - interval '3 days'), 0) / 60.0, 1) AS minutes_3d,
-            round(coalesce(sum(audio_duration_total) FILTER (WHERE status='completed' AND started_at > now() - interval '7 days'), 0) / 60.0, 1) AS minutes_7d,
-            round(coalesce(sum(audio_duration_total) FILTER (WHERE status='completed' AND started_at > now() - interval '30 days'), 0) / 60.0, 1) AS minutes_30d
+            round((coalesce(sum(audio_duration_total) FILTER (WHERE status='completed' AND started_at > now() - interval '1 day'), 0) / 60.0)::numeric, 1)   AS minutes_1d,
+            round((coalesce(sum(audio_duration_total) FILTER (WHERE status='completed' AND started_at > now() - interval '2 days'), 0) / 60.0)::numeric, 1)  AS minutes_2d,
+            round((coalesce(sum(audio_duration_total) FILTER (WHERE status='completed' AND started_at > now() - interval '3 days'), 0) / 60.0)::numeric, 1)  AS minutes_3d,
+            round((coalesce(sum(audio_duration_total) FILTER (WHERE status='completed' AND started_at > now() - interval '7 days'), 0) / 60.0)::numeric, 1)  AS minutes_7d,
+            round((coalesce(sum(audio_duration_total) FILTER (WHERE status='completed' AND started_at > now() - interval '14 days'), 0) / 60.0)::numeric, 1) AS minutes_14d,
+            round((coalesce(sum(audio_duration_total) FILTER (WHERE status='completed' AND started_at > now() - interval '30 days'), 0) / 60.0)::numeric, 1) AS minutes_30d
         FROM sessions
         """
     )
