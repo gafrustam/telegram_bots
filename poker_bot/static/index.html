@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>Покер</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+/* ── Reset & Base ─────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;background:#0a1628;color:#e8e8e8;-webkit-tap-highlight-color:transparent}
+
+/* ── Layout ──────────────────────────────────────────────────── */
+#app{display:flex;flex-direction:column;height:100vh;max-width:480px;margin:0 auto;position:relative}
+
+/* ── Top Bar ─────────────────────────────────────────────────── */
+#topbar{display:flex;justify-content:space-between;align-items:center;padding:8px 14px;background:rgba(0,0,0,.35);border-bottom:1px solid rgba(255,255,255,.07);flex-shrink:0}
+#topbar .hand-info{font-size:11px;color:#aaa;letter-spacing:.5px}
+#topbar .hand-info span{color:#fff;font-weight:600}
+
+/* ── Table Area ───────────────────────────────────────────────── */
+#table{flex:1;display:flex;flex-direction:column;justify-content:space-between;padding:8px 12px;background:radial-gradient(ellipse at 50% 50%,#1a5c35 0%,#0f3d22 60%,#0a2818 100%);border:4px solid #2a1800;border-radius:12px;margin:8px;overflow:hidden;position:relative}
+
+/* ── Player zones ─────────────────────────────────────────────── */
+.player-zone{display:flex;flex-direction:column;align-items:center;gap:4px}
+.player-zone .name{font-size:11px;font-weight:600;letter-spacing:.5px;color:#ccc;text-transform:uppercase}
+.player-zone .chips{font-size:18px;font-weight:700;color:#f5c518}
+.player-zone .chips span{font-size:12px;color:#aaa;font-weight:400}
+.player-zone .dealer-badge{background:#e63946;color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;letter-spacing:.5px}
+.player-zone .cards-row{display:flex;gap:5px;justify-content:center;min-height:72px;align-items:center}
+
+/* ── Middle (community + pot) ─────────────────────────────────── */
+#middle{display:flex;flex-direction:column;align-items:center;gap:6px}
+#community-row{display:flex;gap:6px;justify-content:center;min-height:72px;align-items:center}
+#pot-info{font-size:13px;color:#f5c518;font-weight:700;text-shadow:0 1px 4px rgba(0,0,0,.5)}
+#pot-info span{color:#aaa;font-weight:400;font-size:11px}
+
+/* ── Cards ────────────────────────────────────────────────────── */
+.card{width:46px;height:66px;border-radius:6px;border:1.5px solid rgba(0,0,0,.3);display:flex;flex-direction:column;justify-content:space-between;padding:3px 4px;font-weight:700;font-size:14px;line-height:1;cursor:default;transition:transform .15s;box-shadow:0 2px 8px rgba(0,0,0,.4)}
+.card.small{width:40px;height:58px;font-size:12px}
+.card.anim-deal{animation:deal .25s ease-out}
+@keyframes deal{from{opacity:0;transform:scale(.5) translateY(-20px)}to{opacity:1;transform:scale(1) translateY(0)}}
+.card .rank{font-size:inherit}
+.card .suit-center{font-size:20px;text-align:center;flex:1;display:flex;align-items:center;justify-content:center}
+.card.small .suit-center{font-size:16px}
+.card .rank-bot{transform:rotate(180deg);font-size:inherit;align-self:flex-end}
+/* Red suits */
+.card.red{background:#fff;color:#c0392b}
+/* Black suits */
+.card.black{background:#fff;color:#1a1a2e}
+/* Back of card */
+.card.back{background:linear-gradient(135deg,#1a3a8f 25%,#102366 25%,#102366 50%,#1a3a8f 50%,#1a3a8f 75%,#102366 75%);background-size:10px 10px;border-color:#1a3a8f;color:transparent}
+/* Empty placeholder */
+.card.empty{background:rgba(255,255,255,.06);border:1.5px dashed rgba(255,255,255,.15);color:transparent}
+
+/* ── Thinking indicator ───────────────────────────────────────── */
+#thinking{display:none;align-items:center;gap:6px;padding:4px 10px;background:rgba(0,0,0,.4);border-radius:20px;font-size:11px;color:#aaa}
+#thinking.show{display:flex}
+.dot{width:5px;height:5px;border-radius:50%;background:#4fc3f7;animation:blink 1.2s infinite}
+.dot:nth-child(2){animation-delay:.2s}
+.dot:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,80%,100%{opacity:.2}40%{opacity:1}}
+
+/* ── Bottom Panel ─────────────────────────────────────────────── */
+#bottom{flex-shrink:0;background:rgba(0,0,0,.5);border-top:1px solid rgba(255,255,255,.08);padding:8px 12px 12px}
+
+/* Action log */
+#log{font-size:11px;color:#9e9e9e;height:42px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;gap:1px;margin-bottom:8px}
+#log .log-entry{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#log .log-entry.you{color:#81d4fa}
+#log .log-entry.ai{color:#ef9a9a}
+#log .log-entry.sys{color:#a5d6a7}
+
+/* Action buttons */
+#actions{display:flex;gap:8px;justify-content:stretch}
+.action-btn{flex:1;padding:10px 4px;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;transition:all .12s;letter-spacing:.3px;text-transform:uppercase}
+.action-btn:active{transform:scale(.95)}
+#btn-fold{background:#c62828;color:#fff}
+#btn-fold:hover{background:#e53935}
+#btn-check-call{background:#1565c0;color:#fff}
+#btn-check-call:hover{background:#1976d2}
+#btn-raise{background:#2e7d32;color:#fff}
+#btn-raise:hover{background:#388e3c}
+.action-btn:disabled{opacity:.35;cursor:not-allowed;transform:none}
+
+/* Raise controls */
+#raise-controls{display:flex;align-items:center;gap:6px;margin-top:8px}
+#raise-controls button{width:30px;height:30px;border:none;border-radius:6px;background:#37474f;color:#fff;font-size:16px;cursor:pointer;flex-shrink:0}
+#raise-controls button:active{background:#546e7a}
+#raise-amount{flex:1;text-align:center;background:#1e2d40;border:1px solid #37474f;border-radius:6px;color:#f5c518;font-size:14px;font-weight:700;padding:5px 0;outline:none}
+#btn-pot,#btn-allin{padding:5px 8px;border:none;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;letter-spacing:.3px;flex-shrink:0}
+#btn-pot{background:#5c3d11;color:#f9a825}
+#btn-allin{background:#4a148c;color:#e040fb}
+
+/* ── Overlays ─────────────────────────────────────────────────── */
+#overlay{display:none;position:absolute;inset:0;background:rgba(0,0,0,.82);z-index:10;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:20px;border-radius:12px}
+#overlay.show{display:flex}
+#overlay .result-title{font-size:26px;font-weight:800;letter-spacing:1px}
+#overlay .result-title.win{color:#69f0ae}
+#overlay .result-title.lose{color:#ff5252}
+#overlay .result-title.tie{color:#ffd740}
+#overlay .result-cards{display:flex;flex-direction:column;align-items:center;gap:8px;width:100%}
+#overlay .result-row{display:flex;gap:5px;align-items:center;justify-content:center}
+#overlay .result-label{font-size:11px;color:#aaa;text-align:center}
+#overlay .hand-name{font-size:12px;font-weight:700;color:#fff;background:rgba(255,255,255,.12);padding:2px 10px;border-radius:20px;margin-top:2px}
+#overlay .pot-won{font-size:18px;font-weight:700;color:#f5c518}
+#overlay .next-btn{padding:12px 28px;background:#1565c0;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;letter-spacing:.5px;margin-top:4px}
+#overlay .next-btn:active{transform:scale(.96)}
+#overlay .next-btn.new-game{background:#37474f}
+
+/* ── Start screen ─────────────────────────────────────────────── */
+#start-screen{display:none;position:absolute;inset:0;background:rgba(10,22,40,.96);z-index:20;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:28px;border-radius:12px;text-align:center}
+#start-screen.show{display:flex}
+#start-screen h1{font-size:26px;font-weight:800;color:#f5c518}
+#start-screen p{font-size:13px;color:#aaa;line-height:1.6;max-width:280px}
+#start-screen .deal-btn{padding:14px 36px;background:#2e7d32;color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:700;cursor:pointer}
+
+/* ── Phase badge ─────────────────────────────────────────────── */
+#phase-badge{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#80cbc4;margin-bottom:2px}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Top bar -->
+  <div id="topbar">
+    <div class="hand-info">Раздача <span id="hand-num">0</span></div>
+    <div id="phase-badge">ОЖИДАНИЕ</div>
+    <div class="hand-info">♠ Покер</div>
+  </div>
+
+  <!-- Table -->
+  <div id="table">
+    <!-- AI Zone (top) -->
+    <div class="player-zone" id="ai-zone">
+      <div style="display:flex;gap:6px;align-items:center">
+        <span class="name">ИИ</span>
+        <span id="ai-dealer" class="dealer-badge" style="display:none">SB</span>
+      </div>
+      <div class="chips"><span id="ai-chips">3000</span></div>
+      <div class="cards-row" id="ai-cards-row"></div>
+      <div id="thinking"><div class="dot"></div><div class="dot"></div><div class="dot"></div><span>думает…</span></div>
+    </div>
+
+    <!-- Middle (community + pot) -->
+    <div id="middle">
+      <div id="community-row"></div>
+      <div id="pot-info"><span>Банк: </span><span id="pot-val">0</span></div>
+    </div>
+
+    <!-- Player Zone (bottom) -->
+    <div class="player-zone" id="player-zone">
+      <div class="cards-row" id="player-cards-row"></div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <span class="name">Вы</span>
+        <span id="player-dealer" class="dealer-badge" style="display:none">SB</span>
+      </div>
+      <div class="chips"><span id="player-chips">3000</span></div>
+    </div>
+
+    <!-- Result overlay (inside table) -->
+    <div id="overlay">
+      <div class="result-title" id="result-title">—</div>
+      <div class="result-cards" id="result-cards"></div>
+      <div class="pot-won" id="pot-won"></div>
+      <button class="next-btn" id="next-btn" onclick="nextHand()">Следующая раздача ▶</button>
+    </div>
+  </div>
+
+  <!-- Bottom Panel -->
+  <div id="bottom">
+    <div id="log"></div>
+    <div id="actions">
+      <button class="action-btn" id="btn-fold" onclick="act('fold')">Пас</button>
+      <button class="action-btn" id="btn-check-call" onclick="actCheckCall()">Чек</button>
+      <button class="action-btn" id="btn-raise" onclick="actRaise()">Рейз</button>
+    </div>
+    <div id="raise-controls">
+      <button onclick="adjRaise(-1)">−</button>
+      <input id="raise-amount" type="number" min="0" value="0" oninput="clampRaise()"/>
+      <button onclick="adjRaise(1)">+</button>
+      <button id="btn-pot" onclick="setPotRaise()">БАНК</button>
+      <button id="btn-allin" onclick="setAllin()">ВСЁ</button>
+    </div>
+  </div>
+
+  <!-- Start screen -->
+  <div id="start-screen" class="show">
+    <h1>♠ Холдем</h1>
+    <p>Хедс-ап Техасский Холдем<br/>против умного ИИ<br/><br/>Начальный стек: <b>3 000</b><br/>Малый блайнд: <b>50</b> | Большой блайнд: <b>100</b></p>
+    <button class="deal-btn" onclick="dealFirst()">Раздать карты 🃏</button>
+  </div>
+</div>
+
+<script>
+// ── Telegram Web App init ─────────────────────────────────────────────────
+const tg = window.Telegram?.WebApp;
+if (tg) {
+  tg.ready();
+  tg.expand();
+  tg.setHeaderColor('#0a1628');
+  tg.setBackgroundColor('#0a1628');
+  tg.disableVerticalSwipes?.();
+}
+const tgUser = tg?.initDataUnsafe?.user;
+const USER_ID = tgUser?.id ? String(tgUser.id) : ('guest_' + Math.random().toString(36).slice(2,8));
+
+// ── WebSocket ──────────────────────────────────────────────────────────────
+const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+// Path-aware WS URL so it works both directly and behind /poker/ proxy
+const basePath = location.pathname.replace(/\/?$/, '/');
+const WS_URL = `${proto}://${location.host}${basePath}ws/${USER_ID}`;
+
+let ws = null;
+let state = null;
+let minRaise = 100;
+let potRaise = 200;
+let maxRaise = 3000;
+let toCall = 0;
+let playerBet = 0;
+
+function connect() {
+  ws = new WebSocket(WS_URL);
+  ws.onopen = () => console.log('[ws] connected');
+  ws.onmessage = e => handleMsg(JSON.parse(e.data));
+  ws.onclose = () => setTimeout(connect, 2000);
+  ws.onerror = err => console.error('[ws]', err);
+}
+
+function send(obj) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
+}
+
+// ── Message handling ────────────────────────────────────────────────────────
+function handleMsg(msg) {
+  if (msg.type === 'state') {
+    state = msg.game;
+    render(state);
+  } else if (msg.type === 'ai_thinking') {
+    showThinking(true);
+  } else if (msg.type === 'error') {
+    console.warn('[server]', msg.message);
+  }
+}
+
+// ── Phase translation ─────────────────────────────────────────────────────
+const PHASES_RU = {
+  preflop: 'ПРЕФЛОП',
+  flop: 'ФЛОП',
+  turn: 'ТЁРН',
+  river: 'РИВЕР',
+  showdown: 'ВСКРЫТИЕ',
+  waiting: 'ОЖИДАНИЕ'
+};
+
+function phaseRu(phase) {
+  return PHASES_RU[(phase || 'waiting').toLowerCase()] || (phase || 'ОЖИДАНИЕ').toUpperCase();
+}
+
+// ── Render ──────────────────────────────────────────────────────────────────
+function render(g) {
+  showThinking(false);
+
+  el('hand-num').textContent = g.hand_num || 0;
+  el('ai-chips').textContent = fmt(g.ai_stack);
+  el('player-chips').textContent = fmt(g.player_stack);
+  el('pot-val').textContent = fmt(g.pot || 0);
+  el('phase-badge').textContent = phaseRu(g.phase);
+
+  // Dealer badges (SB)
+  const dealer = g.dealer;
+  showEl('ai-dealer', dealer === 'ai');
+  showEl('player-dealer', dealer === 'player');
+
+  // Cards
+  renderCards('ai-cards-row', g.ai_cards || [], g.phase !== 'showdown' && !(g.ai_cards_revealed));
+  renderCards('player-cards-row', g.player_cards || [], false);
+  renderCommunity(g.community || []);
+
+  // Raise vars
+  toCall = g.to_call || 0;
+  minRaise = g.min_raise || (g.big_blind || 100);
+  potRaise = g.pot_raise || minRaise;
+  maxRaise = (g.player_stack || 0) + (g.player_bet || 0);
+  playerBet = g.player_bet || 0;
+
+  const myTurn = g.to_act === 'player' && !g.winner && !g.game_over;
+  setButtons(myTurn, toCall);
+
+  // Initialize raise amount
+  if (myTurn) {
+    let cur = parseInt(el('raise-amount').value) || 0;
+    if (cur < minRaise) el('raise-amount').value = minRaise;
+    clampRaise();
+  }
+
+  // Log
+  if (g.actions) renderLog(g.actions);
+
+  // Show result overlay
+  if (g.winner) {
+    showResult(g);
+  } else {
+    hideOverlay();
+  }
+
+  // Game over
+  if (g.game_over) {
+    showGameOver(g);
+  }
+
+  // Hide start screen once we have a real hand
+  if (g.phase && g.phase !== 'waiting') {
+    hideStartScreen();
+  }
+}
+
+function renderCards(containerId, cards, faceDown) {
+  const row = el(containerId);
+  const prevCount = row.children.length;
+  row.innerHTML = '';
+
+  cards.forEach((c, i) => {
+    const div = makeCard(c, faceDown, i >= prevCount);
+    row.appendChild(div);
+  });
+
+  if (cards.length === 0) {
+    for (let i = 0; i < 2; i++) {
+      const d = document.createElement('div');
+      d.className = 'card empty';
+      row.appendChild(d);
+    }
+  }
+}
+
+function renderCommunity(cards) {
+  const row = el('community-row');
+  const prevCount = row.children.length;
+  row.innerHTML = '';
+
+  const total = 5;
+  for (let i = 0; i < total; i++) {
+    if (i < cards.length) {
+      row.appendChild(makeCard(cards[i], false, i >= prevCount, true));
+    } else {
+      const d = document.createElement('div');
+      d.className = 'card small empty';
+      row.appendChild(d);
+    }
+  }
+}
+
+const SUIT_SYMBOLS = { h: '♥', d: '♦', c: '♣', s: '♠' };
+const RED_SUITS = new Set(['h', 'd']);
+const RANK_DISPLAY = { T: '10', J: 'J', Q: 'Q', K: 'K', A: 'A' };
+
+function makeCard(code, faceDown, animate, small) {
+  const d = document.createElement('div');
+  if (faceDown || code === 'back') {
+    d.className = 'card back' + (small ? ' small' : '') + (animate ? ' anim-deal' : '');
+    return d;
+  }
+  const rank = code.slice(0, -1);
+  const suit = code.slice(-1);
+  const sym = SUIT_SYMBOLS[suit] || suit;
+  const rDisp = RANK_DISPLAY[rank] || rank;
+  const colorClass = RED_SUITS.has(suit) ? 'red' : 'black';
+  d.className = `card ${colorClass}` + (small ? ' small' : '') + (animate ? ' anim-deal' : '');
+  d.innerHTML = `<div class="rank">${rDisp}</div><div class="suit-center">${sym}</div><div class="rank-bot">${rDisp}</div>`;
+  return d;
+}
+
+// ── Log translation ──────────────────────────────────────────────────────
+function translateLog(a) {
+  return a
+    .replace(/^player/, 'Вы')
+    .replace(/^ai/, 'ИИ')
+    .replace(/^Player/, 'Вы')
+    .replace(/^AI/, 'ИИ')
+    .replace('posts small blind', 'ставит малый блайнд')
+    .replace('posts big blind', 'ставит большой блайнд')
+    .replace('raises all-in to', 'олл-ин до')
+    .replace('raises to', 'рейзит до')
+    .replace('calls all-in', 'колл олл-ин')
+    .replace('calls', 'коллирует')
+    .replace('checks', 'чекует')
+    .replace('folds', 'пасует')
+    .replace(' wins ', ' выигрывает ')
+    .replace(' chips', ' фишек')
+    .replace('Split pot —', 'Раздел —')
+    .replace(' each', ' каждому');
+}
+
+function renderLog(actions) {
+  const logEl = el('log');
+  logEl.innerHTML = '';
+  const last = actions.slice(-4);
+  last.forEach(a => {
+    const d = document.createElement('div');
+    const isYou = a.startsWith('player') || a.startsWith('Player');
+    const isAi = a.startsWith('ai') || a.startsWith('AI');
+    d.className = 'log-entry ' + (isYou ? 'you' : isAi ? 'ai' : 'sys');
+    d.textContent = '▸ ' + translateLog(a);
+    logEl.appendChild(d);
+  });
+}
+
+// ── Result overlay ──────────────────────────────────────────────────────────
+function showResult(g) {
+  const winner = g.winner;
+  const titleEl = el('result-title');
+  const cardsEl = el('result-cards');
+  const potEl = el('pot-won');
+  const nextBtn = el('next-btn');
+
+  if (winner === 'player') {
+    titleEl.textContent = '🏆 Вы выиграли!';
+    titleEl.className = 'result-title win';
+  } else if (winner === 'ai') {
+    titleEl.textContent = '😞 ИИ выиграл';
+    titleEl.className = 'result-title lose';
+  } else {
+    titleEl.textContent = '🤝 Ничья!';
+    titleEl.className = 'result-title tie';
+  }
+
+  potEl.textContent = `Банк: ${fmt(g.pot || 0)}`;
+
+  cardsEl.innerHTML = '';
+  if (g.ended_by === 'showdown') {
+    // AI hand
+    const aiRow = document.createElement('div');
+    aiRow.className = 'result-row';
+    (g.ai_cards_actual || g.ai_cards || []).forEach(c => aiRow.appendChild(makeCard(c, false, false, true)));
+    const aiLabel = document.createElement('div');
+    aiLabel.className = 'result-label';
+    aiLabel.innerHTML = 'ИИ' + (g.ai_hand_name ? `<div class="hand-name">${g.ai_hand_name}</div>` : '');
+    cardsEl.appendChild(aiRow);
+    cardsEl.appendChild(aiLabel);
+
+    // Player hand
+    const plRow = document.createElement('div');
+    plRow.className = 'result-row';
+    (g.player_cards || []).forEach(c => plRow.appendChild(makeCard(c, false, false, true)));
+    const plLabel = document.createElement('div');
+    plLabel.className = 'result-label';
+    plLabel.innerHTML = 'Вы' + (g.player_hand_name ? `<div class="hand-name">${g.player_hand_name}</div>` : '');
+    cardsEl.appendChild(plLabel);
+    cardsEl.appendChild(plRow);
+  }
+
+  if (g.game_over) {
+    nextBtn.textContent = 'Новая игра 🔄';
+    nextBtn.className = 'next-btn new-game';
+  } else {
+    nextBtn.textContent = 'Следующая раздача ▶';
+    nextBtn.className = 'next-btn';
+  }
+
+  el('overlay').classList.add('show');
+}
+
+function hideOverlay() {
+  el('overlay').classList.remove('show');
+}
+
+function showGameOver(g) {
+  const titleEl = el('result-title');
+  const nextBtn = el('next-btn');
+  if (g.player_stack <= 0) {
+    titleEl.textContent = '💸 Разорён!';
+    titleEl.className = 'result-title lose';
+  } else {
+    titleEl.textContent = '🏆 Вы победили!';
+    titleEl.className = 'result-title win';
+  }
+  nextBtn.textContent = 'Новая игра 🔄';
+  nextBtn.className = 'next-btn new-game';
+  el('overlay').classList.add('show');
+}
+
+// ── Raise button with delta ──────────────────────────────────────────────
+function updateRaiseBtn() {
+  const raiseTo = parseInt(el('raise-amount').value) || minRaise;
+  const delta = raiseTo - playerBet;
+  el('btn-raise').textContent = `РЕЙЗ +${fmt(Math.max(0, delta))}`;
+}
+
+// ── Buttons ─────────────────────────────────────────────────────────────────
+function setButtons(myTurn, toCallAmt) {
+  const fold = el('btn-fold');
+  const cc = el('btn-check-call');
+  const raise = el('btn-raise');
+  const rControls = el('raise-controls');
+
+  fold.disabled = !myTurn;
+  cc.disabled = !myTurn;
+  raise.disabled = !myTurn;
+
+  if (toCallAmt > 0) {
+    cc.textContent = `КОЛЛ ${fmt(toCallAmt)}`;
+  } else {
+    cc.textContent = 'ЧЕК';
+  }
+
+  rControls.style.display = myTurn ? 'flex' : 'none';
+  if (myTurn) updateRaiseBtn();
+}
+
+// ── Actions ──────────────────────────────────────────────────────────────────
+function act(action, amount) {
+  send({ type: 'action', action, amount: amount || 0 });
+  setButtons(false, 0);
+}
+
+function actCheckCall() {
+  if (toCall > 0) act('call');
+  else act('check');
+}
+
+function actRaise() {
+  const amt = parseInt(el('raise-amount').value) || minRaise;
+  act('raise', amt);
+}
+
+function adjRaise(dir) {
+  const step = Math.max(state?.big_blind || 100, 50);
+  let cur = parseInt(el('raise-amount').value) || minRaise;
+  cur += dir * step;
+  cur = Math.max(minRaise, Math.min(cur, maxRaise));
+  el('raise-amount').value = cur;
+  updateRaiseBtn();
+}
+
+function clampRaise() {
+  let v = parseInt(el('raise-amount').value) || minRaise;
+  v = Math.max(minRaise, Math.min(v, maxRaise));
+  el('raise-amount').value = v;
+  updateRaiseBtn();
+}
+
+function setPotRaise() {
+  el('raise-amount').value = Math.min(potRaise, maxRaise);
+  clampRaise();
+}
+
+function setAllin() {
+  el('raise-amount').value = maxRaise;
+  updateRaiseBtn();
+}
+
+// ── Navigation ───────────────────────────────────────────────────────────────
+function dealFirst() {
+  hideStartScreen();
+  send({ type: 'new_hand' });
+}
+
+function nextHand() {
+  hideOverlay();
+  if (state && (state.game_over || state.player_stack <= 0 || state.ai_stack <= 0)) {
+    send({ type: 'new_game' });
+  } else {
+    send({ type: 'new_hand' });
+  }
+}
+
+function showThinking(yes) {
+  el('thinking').className = yes ? 'show' : '';
+}
+
+function hideStartScreen() {
+  el('start-screen').classList.remove('show');
+}
+
+// ── Utils ────────────────────────────────────────────────────────────────────
+function el(id) { return document.getElementById(id); }
+function showEl(id, show) { el(id).style.display = show ? '' : 'none'; }
+function fmt(n) {
+  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
+  return n;
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+connect();
+</script>
+</body>
+</html>

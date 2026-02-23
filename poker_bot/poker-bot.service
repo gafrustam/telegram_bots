@@ -1,0 +1,15 @@
+[Unit]
+Description=Poker Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/telegram_bots/poker_bot
+ExecStart=/home/ubuntu/telegram_bots/poker_bot/venv/bin/python bot.py
+Restart=always
+RestartSec=5
+EnvironmentFile=/home/ubuntu/telegram_bots/poker_bot/.env
+
+[Install]
+WantedBy=multi-user.target

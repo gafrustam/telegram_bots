@@ -1,0 +1,15 @@
+[Unit]
+Description=Poker Mini App FastAPI Server
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/telegram_bots/poker_bot
+ExecStart=/home/ubuntu/telegram_bots/poker_bot/venv/bin/uvicorn server:app --host 0.0.0.0 --port 8001 --log-level info
+Restart=always
+RestartSec=5
+EnvironmentFile=/home/ubuntu/telegram_bots/poker_bot/.env
+
+[Install]
+WantedBy=multi-user.target
