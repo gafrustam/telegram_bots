@@ -383,9 +383,7 @@ async def handle_part_selection(message: Message, state: FSMContext) -> None:
     )
 
     text = f"📝 <b>{PART_NAMES[part]}</b>\n\nТема: <b>{topic}</b>\n"
-    if part == 2:
-        text += f"\n{cue_card}\n"
-    else:
+    if part != 2:
         text += f"\nВопросов: {len(questions)}\n"
     text += f"\n{PART_INSTRUCTIONS[part]}"
 
@@ -432,9 +430,7 @@ async def handle_another_topic(callback: CallbackQuery, state: FSMContext) -> No
     )
 
     text = f"📝 <b>{PART_NAMES[part]}</b>\n\nТема: <b>{topic}</b>\n"
-    if part == 2:
-        text += f"\n{cue_card}\n"
-    else:
+    if part != 2:
         text += f"\nВопросов: {len(questions)}\n"
     text += f"\n{PART_INSTRUCTIONS[part]}"
 
@@ -662,15 +658,18 @@ async def _start_part2_countdown(chat_id: int, state: FSMContext) -> None:
         return
 
     await state.set_state(SpeakingStates.part2_answering)
+    end_text = "⏱ <b>Время подготовки вышло!</b>"
+    if cue_card:
+        end_text += f"\n\n📋 <b>Карточка:</b>\n{cue_card}"
+    end_text += "\n\n🎤 Запиши голосовое сообщение (до 2 минут)."
     try:
-        await bot.delete_message(chat_id, msg.message_id)
+        await bot.edit_message_text(
+            end_text,
+            chat_id, msg.message_id,
+            parse_mode=ParseMode.HTML,
+        )
     except Exception:
-        pass
-    await bot.send_message(
-        chat_id,
-        "⏱ Время подготовки вышло!\n\n🎤 Запиши голосовое сообщение (до 2 минут).",
-        parse_mode=ParseMode.HTML,
-    )
+        await bot.send_message(chat_id, end_text, parse_mode=ParseMode.HTML)
 
 
 # ── Send question via TTS ────────────────────────────────
@@ -680,8 +679,15 @@ async def _send_question(message: Message, state: FSMContext, index: int) -> Non
     questions = data["questions"]
     question = questions[index]
     total = len(questions)
+    part = data.get("part", 1)
 
     await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
+
+    # Part 1: audio only, no text — the question is conveyed via voice
+    if part == 1:
+        caption = f"Вопрос {index + 1}/{total}\n\n🎤 Ответьте голосовым сообщением."
+    else:
+        caption = f"Вопрос {index + 1}/{total}: <b>{question}</b>\n\n🎤 Ответьте голосовым сообщением."
 
     try:
         audio_bytes = await text_to_voice(question)
@@ -689,7 +695,7 @@ async def _send_question(message: Message, state: FSMContext, index: int) -> Non
         await bot.send_voice(
             chat_id=message.chat.id,
             voice=voice_file,
-            caption=f"Вопрос {index + 1}/{total}: <b>{question}</b>\n\n🎤 Ответьте голосовым сообщением.",
+            caption=caption,
             parse_mode=ParseMode.HTML,
         )
     except Exception:
@@ -1008,9 +1014,7 @@ async def handle_interrupt_new(
     )
 
     text = f"📝 <b>{PART_NAMES[new_part]}</b>\n\nТема: <b>{topic}</b>\n"
-    if new_part == 2:
-        text += f"\n{cue_card}\n"
-    else:
+    if new_part != 2:
         text += f"\nВопросов: {len(questions)}\n"
     text += f"\n{PART_INSTRUCTIONS[new_part]}"
 

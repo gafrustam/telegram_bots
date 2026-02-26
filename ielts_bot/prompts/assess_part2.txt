@@ -56,9 +56,21 @@ SCORING RULES:
 - The overall_band is the arithmetic mean of the four criteria, rounded to the nearest 0.5 (with .25 rounding UP to .5, and .75 rounding UP to the next whole number).
 - Each criterion must have 3 to 5 examples — concrete quotes or moments from the audio that justify the given band.
 - Examples must be SPECIFIC — cite actual phrases, words, pauses, or patterns you heard.
-- Examples and quoted phrases MUST be written in English (as spoken by the candidate), not transliterated or translated into Russian.
-- Where it adds value, show the correct or better alternative alongside the quote (also in English).
-- All explanations and recommendations must be in Russian, but any quoted speech must remain in English.
+- Each example must be self-contained and immediately clear to the learner. Use these formats:
+  - ERROR or weak choice: ❌ "what the candidate said" → "how it should be said" — краткое пояснение на русском
+  - STRENGTH: ✅ "what was said" — краткое пояснение на русском, почему это хорошо
+  - OBSERVATION (pacing, hesitation, patterns): 💬 описание на русском с английскими цитатами/терминами где нужно
+- Quoted phrases MUST be written in English (as spoken by the candidate), not transliterated or translated.
+- Corrections and better alternatives must also be in English.
+- All explanatory notes within examples must be in Russian.
+
+LEXICAL RESOURCE — additional requirement for Part 2:
+- At least one example must show a concrete vocabulary substitution: a basic or overused word/phrase the candidate used, and a richer/more precise alternative. Format: ❌ "basic word/phrase" → "richer alternative" — пояснение, почему это лучше.
+- If the candidate used a word awkwardly (wrong collocation, inappropriate register), note the correct collocation too.
+
+PRONUNCIATION & FLUENCY — additional requirement for Part 2:
+- At least one example must describe a specific intonation or pacing pattern: where sentence stress fell, whether intonation was natural or flat/monotone, any rushed or unnaturally halted passages.
+- If relevant, note where rising/falling intonation was unexpected or where a natural pause would have improved delivery. Use format: 💬 description with any English quoted phrases inline.
 
 IMPORTANT: If the audio is too short (under ~10 seconds of speech), too noisy to assess, or not in English, return:
 {{
