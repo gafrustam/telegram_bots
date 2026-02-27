@@ -25,13 +25,15 @@ from states import InterruptAction, ResultAction, TopicAction
 # ── main_menu_keyboard ───────────────────────────────────
 
 class TestMainMenuKeyboard:
-    def test_regular_user_has_4_rows(self):
+    def test_regular_user_has_5_rows(self):
+        # 4 standard rows + 1 Web App row
         kb = main_menu_keyboard(is_admin=False)
-        assert len(kb.keyboard) == 4
-
-    def test_admin_user_has_5_rows(self):
-        kb = main_menu_keyboard(is_admin=True)
         assert len(kb.keyboard) == 5
+
+    def test_admin_user_has_6_rows(self):
+        # 4 standard + 1 Web App + 1 Admin
+        kb = main_menu_keyboard(is_admin=True)
+        assert len(kb.keyboard) == 6
 
     def test_admin_row_contains_admin_button(self):
         kb = main_menu_keyboard(is_admin=True)

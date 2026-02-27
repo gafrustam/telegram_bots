@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#f8f9fa" />
+  <title>Крестики-нолики · Ходы исчезают</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg:       #f8f9fa;
+      --surface:  #ffffff;
+      --text:     #1a1a1a;
+      --hint:     #8a8a8e;
+      --x-color:  #e53e3e;
+      --o-color:  #3182ce;
+      --win-bg:   rgba(250, 204, 21, 0.25);
+      --win-fg:   #b45309;
+      --grid-gap: 3px;
+      --cell-r:   10px;
+      --btn-color: #3182ce;
+      --btn-text:  #ffffff;
+    }
+    .tg-theme {
+      --bg:       var(--tg-theme-bg-color, #f8f9fa);
+      --surface:  var(--tg-theme-secondary-bg-color, #ffffff);
+      --text:     var(--tg-theme-text-color, #1a1a1a);
+      --hint:     var(--tg-theme-hint-color, #8a8a8e);
+      --btn-color:var(--tg-theme-button-color, #3182ce);
+      --btn-text: var(--tg-theme-button-text-color, #ffffff);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      overscroll-behavior: none;
+    }
+
+    /* ── Screen system ── */
+    .screen { display: none; }
+    .screen.active { display: flex; }
+
+    /* ── Mode selection screen ── */
+    #mode-screen {
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100%;
+      max-width: 420px;
+      margin: 0 auto;
+      padding: 40px 24px 60px;
+      gap: 16px;
+    }
+    .mode-screen-title {
+      text-align: center;
+      margin-bottom: 8px;
+    }
+    .mode-screen-title h1 {
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -.5px;
+    }
+    .mode-screen-title p {
+      font-size: 14px;
+      color: var(--hint);
+      margin-top: 4px;
+    }
+    .mode-card {
+      width: 100%;
+      background: var(--surface);
+      border-radius: 16px;
+      padding: 18px 20px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: border-color .15s, transform .1s;
+      text-align: left;
+    }
+    .mode-card:active { transform: scale(.97); }
+    .mode-card-icon { font-size: 32px; flex-shrink: 0; line-height: 1; }
+    .mode-card-body { flex: 1; }
+    .mode-card-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .mode-card-desc {
+      font-size: 13px;
+      color: var(--hint);
+      margin-top: 2px;
+    }
+    .mode-card-arrow {
+      font-size: 22px;
+      color: var(--hint);
+      flex-shrink: 0;
+    }
+    .mode-card:hover { border-color: var(--btn-color); }
+
+    /* ── Game screen ── */
+    #game-screen {
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 100%;
+      max-width: 420px;
+      margin: 0 auto;
+      padding: 16px 20px 24px;
+      gap: 12px;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+    }
+    .header h1 {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -.3px;
+      flex: 1;
+      text-align: center;
+    }
+    .back-btn {
+      background: none;
+      border: none;
+      font-size: 22px;
+      color: var(--hint);
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 8px;
+      transition: color .15s, background .15s;
+      flex-shrink: 0;
+    }
+    .back-btn:hover { color: var(--text); background: rgba(128,128,128,.1); }
+    .mode-badge {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--hint);
+      background: rgba(128,128,128,.1);
+      border-radius: 6px;
+      padding: 3px 8px;
+      flex-shrink: 0;
+    }
+
+    /* ── Score bar ── */
+    .scorebar { display: flex; justify-content: center; gap: 6px; width: 100%; }
+    .score-pill {
+      flex: 1;
+      display: flex; flex-direction: column; align-items: center;
+      padding: 8px 6px 7px;
+      background: var(--surface); border-radius: 12px;
+      font-size: 11px; color: var(--hint); font-weight: 600;
+      text-transform: uppercase; letter-spacing: .05em;
+      border: 2px solid transparent; transition: border-color .2s;
+    }
+    .score-pill.active-x { border-color: var(--x-color); }
+    .score-pill.active-o { border-color: var(--o-color); }
+    .score-pill .val {
+      font-size: 22px; font-weight: 800;
+      color: var(--text); line-height: 1; margin-top: 3px;
+      font-variant-numeric: tabular-nums;
+    }
+    .score-pill.x-pill .val { color: var(--x-color); }
+    .score-pill.o-pill .val { color: var(--o-color); }
+
+    /* ── Status ── */
+    .status {
+      font-size: 16px; font-weight: 600;
+      text-align: center; min-height: 24px;
+    }
+    .status .marker {
+      display: inline-block; width: 20px; height: 20px;
+      border-radius: 50%; font-size: 12px; font-weight: 800;
+      text-align: center; line-height: 20px;
+      vertical-align: middle; margin-right: 4px;
+    }
+    .status .marker.x { background: var(--x-color); color: #fff; }
+    .status .marker.o { background: var(--o-color); color: #fff; }
+
+    /* ── Board ── */
+    .board-wrap { width: 100%; aspect-ratio: 1; }
+    .board {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--grid-gap);
+      background: rgba(0,0,0,.08);
+      border-radius: calc(var(--cell-r) + var(--grid-gap));
+      overflow: hidden; width: 100%; aspect-ratio: 1;
+    }
+    .cell {
+      background: var(--surface);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; position: relative;
+      transition: background .15s;
+    }
+    .cell:active:not(.occupied) { background: rgba(128,128,128,.06); }
+    .cell .piece {
+      font-size: clamp(28px, 10vw, 52px);
+      font-weight: 900; line-height: 1;
+    }
+    .cell.x .piece { color: var(--x-color); }
+    .cell.o .piece { color: var(--o-color); }
+    .cell.ghost .piece { opacity: 0.28; }
+    .cell.ghost::after {
+      content: ''; position: absolute; inset: 5px;
+      border-radius: calc(var(--cell-r) - 2px);
+      border: 2px dashed currentColor; opacity: .35;
+      animation: ghost-pulse 1.6s ease-in-out infinite;
+    }
+    .cell.ghost.x::after { color: var(--x-color); }
+    .cell.ghost.o::after { color: var(--o-color); }
+    @keyframes ghost-pulse {
+      0%, 100% { opacity: .2; }
+      50%       { opacity: .5; }
+    }
+    .cell.win { background: var(--win-bg); }
+    .cell.win .piece { color: var(--win-fg) !important; }
+    .cell:not(.occupied):not(.blocked)::before {
+      content: ''; position: absolute;
+      font-size: clamp(22px, 8vw, 42px);
+      font-weight: 900; opacity: 0;
+      transition: opacity .15s; pointer-events: none;
+    }
+    .cell:hover:not(.occupied):not(.blocked)::before,
+    .cell:focus:not(.occupied):not(.blocked)::before { opacity: .12; }
+    .board.turn-x .cell:not(.occupied):not(.blocked)::before { color: var(--x-color); content: '✕'; }
+    .board.turn-o .cell:not(.occupied):not(.blocked)::before { color: var(--o-color); content: '○'; }
+
+    @keyframes appear {
+      0%   { transform: scale(0) rotate(-12deg); opacity: 0; }
+      60%  { transform: scale(1.18) rotate(4deg); opacity: 1; }
+      100% { transform: scale(1) rotate(0deg); opacity: 1; }
+    }
+    @keyframes vanish {
+      0%   { transform: scale(1); opacity: 1; }
+      100% { transform: scale(0); opacity: 0; }
+    }
+    .cell.appearing .piece { animation: appear .28s cubic-bezier(.34,1.56,.64,1) both; }
+    .cell.vanishing .piece { animation: vanish .22s ease-in both; }
+
+    /* ── Rule hint ── */
+    .rule-hint { font-size: 12px; color: var(--hint); text-align: center; line-height: 1.5; }
+
+    /* ── New game button ── */
+    .new-game-btn {
+      background: var(--btn-color); color: var(--btn-text);
+      border: none; border-radius: 10px; padding: 12px 32px;
+      font-size: 15px; font-weight: 600; cursor: pointer;
+      transition: opacity .15s, transform .1s;
+      width: 100%; max-width: 280px;
+    }
+    .new-game-btn:active { opacity: .8; transform: scale(.97); }
+
+    /* ── Online waiting banner ── */
+    #online-banner {
+      display: none; width: 100%;
+      background: var(--surface);
+      border-radius: 12px; padding: 14px 16px;
+      text-align: center; font-size: 14px; font-weight: 600;
+    }
+    #online-banner .conn-dots {
+      display: inline-flex; gap: 5px; vertical-align: middle; margin-left: 6px;
+    }
+    #online-banner .conn-dots span {
+      width: 7px; height: 7px;
+      border-radius: 50%; background: var(--btn-color);
+      animation: blink 1.1s ease-in-out infinite;
+    }
+    #online-banner .conn-dots span:nth-child(2) { animation-delay: .22s; }
+    #online-banner .conn-dots span:nth-child(3) { animation-delay: .44s; }
+    @keyframes blink {
+      0%, 80%, 100% { opacity: .2; transform: scale(.8); }
+      40%            { opacity: 1;  transform: scale(1); }
+    }
+
+    /* ── Win modal ── */
+    #win-overlay {
+      position: fixed; inset: 0; z-index: 500;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,.35);
+      opacity: 0; pointer-events: none; transition: opacity .25s;
+    }
+    #win-overlay.show { opacity: 1; pointer-events: all; }
+    .win-card {
+      background: var(--surface); border-radius: 20px;
+      padding: 28px 24px 20px; text-align: center;
+      box-shadow: 0 8px 40px rgba(0,0,0,.18);
+      width: 280px;
+      transform: scale(.85);
+      transition: transform .28s cubic-bezier(.34,1.4,.64,1);
+    }
+    #win-overlay.show .win-card { transform: scale(1); }
+    .win-emoji { font-size: 48px; line-height: 1; margin-bottom: 8px; }
+    .win-title { font-size: 20px; font-weight: 800; margin-bottom: 5px; }
+    .win-sub   { font-size: 13px; color: var(--hint); margin-bottom: 18px; }
+    .win-btns  { display: flex; gap: 10px; }
+    .win-btns button {
+      flex: 1; padding: 10px; border: none;
+      border-radius: 10px; font-size: 14px; font-weight: 600;
+      cursor: pointer; transition: opacity .15s;
+    }
+    .win-btns button:active { opacity: .75; }
+    .win-btn-play { background: var(--btn-color); color: var(--btn-text); }
+    .win-btn-close { background: rgba(128,128,128,.12); color: var(--text); }
+  </style>
+</head>
+<body>
+
+  <!-- ── Mode selection screen ── -->
+  <div id="mode-screen" class="screen active">
+    <div class="mode-screen-title">
+      <h1>✕ &nbsp; ○</h1>
+      <p>Ходы исчезают · Выберите режим</p>
+    </div>
+
+    <button class="mode-card" id="mode-ai">
+      <span class="mode-card-icon">🤖</span>
+      <div class="mode-card-body">
+        <div class="mode-card-title">Против ИИ</div>
+        <div class="mode-card-desc">Сыграй против умного компьютера</div>
+      </div>
+      <span class="mode-card-arrow">›</span>
+    </button>
+
+    <button class="mode-card" id="mode-local">
+      <span class="mode-card-icon">👤</span>
+      <div class="mode-card-body">
+        <div class="mode-card-title">Вдвоём</div>
+        <div class="mode-card-desc">Два игрока на одном экране</div>
+      </div>
+      <span class="mode-card-arrow">›</span>
+    </button>
+
+    <button class="mode-card" id="mode-online">
+      <span class="mode-card-icon">🌐</span>
+      <div class="mode-card-body">
+        <div class="mode-card-title">Онлайн</div>
+        <div class="mode-card-desc">Найти соперника в сети</div>
+      </div>
+      <span class="mode-card-arrow">›</span>
+    </button>
+  </div>
+
+  <!-- ── Game screen ── -->
+  <div id="game-screen" class="screen">
+    <div class="header">
+      <button class="back-btn" id="back-btn" title="Сменить режим">‹</button>
+      <h1>✕ &nbsp; ○</h1>
+      <span class="mode-badge" id="mode-badge">ИИ</span>
+    </div>
+
+    <div id="online-banner">
+      Ожидаем соперника
+      <span class="conn-dots"><span></span><span></span><span></span></span>
+    </div>
+
+    <div class="scorebar">
+      <div class="score-pill x-pill" id="score-x-pill">
+        X <div class="val" id="score-x">0</div>
+      </div>
+      <div class="score-pill" id="score-d-pill" style="flex:.6">
+        = <div class="val" id="score-d">0</div>
+      </div>
+      <div class="score-pill o-pill" id="score-o-pill">
+        O <div class="val" id="score-o">0</div>
+      </div>
+    </div>
+
+    <div class="status" id="status">
+      <span class="marker x">X</span> Ход крестика
+    </div>
+
+    <div class="board-wrap">
+      <div class="board turn-x" id="board"></div>
+    </div>
+
+    <p class="rule-hint">
+      Каждый держит не больше&nbsp;3&nbsp;фишек —<br>
+      бледная исчезнет при следующем ходе
+    </p>
+
+    <button class="new-game-btn" id="new-game-btn">Новая игра</button>
+  </div>
+
+  <!-- Win overlay -->
+  <div id="win-overlay">
+    <div class="win-card">
+      <div class="win-emoji" id="win-emoji">🎉</div>
+      <div class="win-title" id="win-title">Победа!</div>
+      <div class="win-sub"  id="win-sub"></div>
+      <div class="win-btns">
+        <button class="win-btn-play" id="win-play-btn">Ещё раз</button>
+        <button class="win-btn-close" id="win-close-btn">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  // ── Telegram theme ──────────────────────────────────────
+  (function () {
+    const tg = window.Telegram?.WebApp;
+    if (!tg) return;
+    tg.ready(); tg.expand();
+    document.getElementById("game-screen").classList.add("tg-theme");
+    document.getElementById("mode-screen").classList.add("tg-theme");
+    const tp = tg.themeParams || {};
+    const r  = document.documentElement.style;
+    if (tp.bg_color)           r.setProperty("--bg",       tp.bg_color);
+    if (tp.secondary_bg_color) r.setProperty("--surface",  tp.secondary_bg_color);
+    if (tp.text_color)         r.setProperty("--text",     tp.text_color);
+    if (tp.hint_color)         r.setProperty("--hint",     tp.hint_color);
+    if (tp.button_color)       r.setProperty("--btn-color",tp.button_color);
+    if (tp.button_text_color)  r.setProperty("--btn-text", tp.button_text_color);
+  })();
+
+  // ── Constants ───────────────────────────────────────────
+  const WIN_LINES = [
+    [0,1,2],[3,4,5],[6,7,8],
+    [0,3,6],[1,4,7],[2,5,8],
+    [0,4,8],[2,4,6],
+  ];
+  const MAX_HALF_MOVES = 120;
+  const AI_THINK_MS    = 420;
+
+  // ── State ───────────────────────────────────────────────
+  let mode     = 'ai';    // 'ai' | 'local' | 'online'
+  let mySymbol = 'X';
+
+  const g = {
+    board:     Array(9).fill(null),
+    queue:     { X: [], O: [] },
+    turn:      'X',
+    phase:     'playing',   // 'playing' | 'over' | 'waiting'
+    winner:    null,
+    winLine:   [],
+    scores:    { X: 0, O: 0, D: 0 },
+    halfMoves: 0,
+    busy:      false,
+  };
+
+  // ── DOM refs ────────────────────────────────────────────
+  const modeScreen   = document.getElementById('mode-screen');
+  const gameScreen   = document.getElementById('game-screen');
+  const boardEl      = document.getElementById('board');
+  const statusEl     = document.getElementById('status');
+  const scoreXEl     = document.getElementById('score-x');
+  const scoreOEl     = document.getElementById('score-o');
+  const scoreDEl     = document.getElementById('score-d');
+  const scorePillX   = document.getElementById('score-x-pill');
+  const scorePillO   = document.getElementById('score-o-pill');
+  const newGameBtn   = document.getElementById('new-game-btn');
+  const backBtn      = document.getElementById('back-btn');
+  const modeBadge    = document.getElementById('mode-badge');
+  const winOverlay   = document.getElementById('win-overlay');
+  const winEmoji     = document.getElementById('win-emoji');
+  const winTitle     = document.getElementById('win-title');
+  const winSub       = document.getElementById('win-sub');
+  const winPlayBtn   = document.getElementById('win-play-btn');
+  const winCloseBtn  = document.getElementById('win-close-btn');
+  const onlineBanner = document.getElementById('online-banner');
+
+  // ── Build board cells ───────────────────────────────────
+  const cells = [];
+  for (let i = 0; i < 9; i++) {
+    const el = document.createElement('div');
+    el.className = 'cell';
+    el.innerHTML = '<span class="piece"></span>';
+    el.addEventListener('click', () => onCellClick(i));
+    boardEl.appendChild(el);
+    cells.push(el);
+  }
+
+  // ── Helpers ─────────────────────────────────────────────
+  function checkWin(board, player) {
+    return WIN_LINES.find(line => line.every(i => board[i] === player)) || null;
+  }
+  function ghostOfQ(q) { return q.length === 3 ? q[0] : -1; }
+  function wait(ms)     { return new Promise(r => setTimeout(r, ms)); }
+
+  // ── Render ──────────────────────────────────────────────
+  function renderCell(i, animClass) {
+    const el    = cells[i];
+    const piece = g.board[i];
+    const p     = el.querySelector('.piece');
+    el.className = 'cell';
+    if (!piece) { p.textContent = ''; return; }
+    el.classList.add(piece.toLowerCase(), 'occupied');
+    const isGhost = g.phase === 'playing' && ghostOfQ(g.queue[piece]) === i;
+    if (isGhost) el.classList.add('ghost');
+    if (g.winLine.includes(i)) { el.classList.add('win'); el.classList.remove('ghost'); }
+    p.textContent = piece === 'X' ? '✕' : '○';
+    if (animClass) {
+      el.classList.add(animClass);
+      el.addEventListener('animationend', () => el.classList.remove(animClass), { once: true });
+    }
+  }
+
+  function renderAll() {
+    for (let i = 0; i < 9; i++) renderCell(i);
+
+    const blocked = g.phase !== 'playing' || g.busy ||
+                    (mode === 'online' && g.turn !== mySymbol);
+    boardEl.className = 'board' + (g.phase === 'playing' ? ' turn-' + g.turn.toLowerCase() : '');
+    cells.forEach(c => {
+      if (blocked && !c.classList.contains('occupied')) c.classList.add('blocked');
+      else c.classList.remove('blocked');
+    });
+
+    scorePillX.className = 'score-pill x-pill' + (g.turn === 'X' && g.phase === 'playing' ? ' active-x' : '');
+    scorePillO.className = 'score-pill o-pill' + (g.turn === 'O' && g.phase === 'playing' ? ' active-o' : '');
+    scoreXEl.textContent = g.scores.X;
+    scoreOEl.textContent = g.scores.O;
+    scoreDEl.textContent = g.scores.D;
+
+    if (g.phase === 'waiting') {
+      statusEl.innerHTML = 'Ожидаем соперника…';
+    } else if (g.phase === 'playing') {
+      const color = g.turn === 'X' ? 'x' : 'o';
+      const sym   = g.turn === 'X' ? 'X' : 'O';
+      let label;
+      if (mode === 'ai') {
+        label = g.turn === mySymbol ? 'Ваш ход' : '🤖 Думает…';
+      } else if (mode === 'online') {
+        label = g.turn === mySymbol ? 'Ваш ход' : 'Ход соперника';
+      } else {
+        label = g.turn === 'X' ? 'Ход крестика' : 'Ход нолика';
+      }
+      statusEl.innerHTML = `<span class="marker ${color}">${sym}</span> ${label}`;
+    } else if (g.winner) {
+      const color = g.winner === 'X' ? 'x' : 'o';
+      const sym   = g.winner === 'X' ? 'X' : 'O';
+      statusEl.innerHTML = `<span class="marker ${color}">${sym}</span> Победа!`;
+    } else {
+      statusEl.textContent = 'Ничья';
+    }
+  }
+
+  // ── Apply move ──────────────────────────────────────────
+  async function applyMove(i) {
+    const player = g.turn;
+    const queue  = g.queue[player];
+
+    if (queue.length === 3) {
+      const ri = queue[0];
+      cells[ri].classList.add('vanishing');
+      cells[ri].querySelector('.piece').style.animation = '';
+      await wait(220);
+      queue.shift();
+      g.board[ri] = null;
+      renderCell(ri);
+    }
+
+    g.board[i] = player;
+    queue.push(i);
+    renderCell(i, 'appearing');
+    g.halfMoves++;
+
+    const winLine = checkWin(g.board, player);
+    if (winLine) {
+      g.phase = 'over'; g.winner = player; g.winLine = winLine;
+      g.scores[player]++;
+      renderAll();
+      await wait(350);
+      showWinOverlay(player, false);
+      return true;
+    }
+    if (g.halfMoves >= MAX_HALF_MOVES) {
+      g.phase = 'over'; g.winner = null; g.scores.D++;
+      renderAll();
+      await wait(200);
+      showWinOverlay(null, true);
+      return true;
+    }
+    g.turn = player === 'X' ? 'O' : 'X';
+    renderAll();
+    return false;
+  }
+
+  // ── Cell click ──────────────────────────────────────────
+  async function onCellClick(i) {
+    if (g.busy || g.phase !== 'playing') return;
+    if (g.board[i] !== null) return;
+    if (mode === 'online' && g.turn !== mySymbol) return;
+    // Block clicks on ghost cell the player is about to lose
+    if (mode !== 'local' && ghostOfQ(g.queue[g.turn]) === i) return;
+
+    g.busy = true;
+    if (mode === 'online') wsSend({ type: 'move', index: i });
+    const ended = await applyMove(i);
+    if (!ended && mode === 'ai' && g.turn !== mySymbol) {
+      renderAll();
+      await wait(AI_THINK_MS);
+      const aiIdx = aiChooseMove();
+      if (aiIdx !== -1) await applyMove(aiIdx);
+    }
+    g.busy = false;
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // ── AI minimax with alpha-beta ────────────────────────────
+  // ─────────────────────────────────────────────────────────
+  function simMove(board, qX, qO, player, idx) {
+    const b = board.slice();
+    const nqX = qX.slice();
+    const nqO = qO.slice();
+    const q = player === 'X' ? nqX : nqO;
+    if (q.length === 3) { b[q[0]] = null; q.shift(); }
+    b[idx] = player;
+    q.push(idx);
+    return [b, nqX, nqO];
+  }
+
+  function minimax(board, qX, qO, player, depth, alpha, beta, maxDepth) {
+    if (checkWin(board, 'O')) return 10 - depth;
+    if (checkWin(board, 'X')) return depth - 10;
+
+    const ghost = player === 'X' ? ghostOfQ(qX) : ghostOfQ(qO);
+    const empties = [];
+    for (let i = 0; i < 9; i++) {
+      if (board[i] === null && i !== ghost) empties.push(i);
+    }
+    if (empties.length === 0 || depth >= maxDepth) return 0;
+
+    const isMax = player === 'O';
+    let best = isMax ? -Infinity : Infinity;
+    for (const idx of empties) {
+      const [nb, nqX, nqO] = simMove(board, qX, qO, player, idx);
+      const score = minimax(nb, nqX, nqO, player === 'X' ? 'O' : 'X', depth + 1, alpha, beta, maxDepth);
+      if (isMax) { best = Math.max(best, score); alpha = Math.max(alpha, best); }
+      else        { best = Math.min(best, score); beta  = Math.min(beta, best);  }
+      if (beta <= alpha) break;
+    }
+    return best;
+  }
+
+  function aiChooseMove() {
+    const aiPlayer = mySymbol === 'X' ? 'O' : 'X';
+    const ghost    = ghostOfQ(aiPlayer === 'X' ? g.queue.X : g.queue.O);
+    const empties  = [];
+    for (let i = 0; i < 9; i++) {
+      if (g.board[i] === null && i !== ghost) empties.push(i);
+    }
+    if (empties.length === 0) return -1;
+    const maxDepth = g.board.filter(x => x !== null).length <= 4 ? 7 : 5;
+    let bestScore = -Infinity, bestIdx = empties[0];
+    for (const idx of empties) {
+      const [nb, nqX, nqO] = simMove(g.board, g.queue.X.slice(), g.queue.O.slice(), aiPlayer, idx);
+      const score = minimax(nb, nqX, nqO, aiPlayer === 'X' ? 'O' : 'X', 1, -Infinity, Infinity, maxDepth);
+      if (score > bestScore) { bestScore = score; bestIdx = idx; }
+    }
+    return bestIdx;
+  }
+
+  // ─────────────────────────────────────────────────────────
+  // ── Online multiplayer ────────────────────────────────────
+  // ─────────────────────────────────────────────────────────
+  let ws = null;
+
+  function wsUrl() {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    if (location.hostname === 'gafrustam.ru') return `${proto}://gafrustam.ru/ielts/ws/ttt`;
+    return `${proto}://${location.hostname}:8002/ws/ttt`;
+  }
+
+  function wsConnect() {
+    if (ws) { try { ws.close(); } catch(e) {} ws = null; }
+    onlineBanner.style.display = 'block';
+    g.phase = 'waiting';
+    renderAll();
+
+    ws = new WebSocket(wsUrl());
+    ws.onmessage = (ev) => {
+      let msg; try { msg = JSON.parse(ev.data); } catch(e) { return; }
+      if (msg.type === 'waiting') {
+        g.phase = 'waiting'; onlineBanner.style.display = 'block'; renderAll();
+      } else if (msg.type === 'start') {
+        mySymbol = msg.symbol;
+        onlineBanner.style.display = 'none';
+        resetGameState(); renderAll();
+      } else if (msg.type === 'move') {
+        if (g.phase === 'playing' && !g.busy) {
+          g.busy = true;
+          applyMove(msg.index).then(() => { g.busy = false; });
+        }
+      } else if (msg.type === 'restart') {
+        resetGameState(); hideWinOverlay(); renderAll();
+      } else if (msg.type === 'opponent_left') {
+        if (ws) { ws.close(); ws = null; }
+        statusEl.textContent = 'Соперник отключился'; g.phase = 'over'; renderAll();
+      }
+    };
+    ws.onerror = () => { statusEl.textContent = 'Ошибка соединения'; };
+    ws.onclose = () => {
+      if (mode === 'online' && g.phase === 'waiting') {
+        onlineBanner.style.display = 'none';
+        statusEl.textContent = 'Нет соединения'; g.phase = 'over'; renderAll();
+      }
+    };
+  }
+
+  function wsSend(obj) {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+  }
+
+  // ── Win overlay ─────────────────────────────────────────
+  function showWinOverlay(winner, isDraw) {
+    winEmoji.style.color = '';
+    if (isDraw) {
+      winEmoji.textContent = '🤝'; winTitle.textContent = 'Ничья!'; winSub.textContent = 'Никто не выиграл';
+    } else if (mode === 'ai') {
+      if (winner === mySymbol) {
+        winEmoji.textContent = '🎉'; winTitle.textContent = 'Вы выиграли!'; winSub.textContent = 'Молодец!';
+      } else {
+        winEmoji.textContent = '🤖'; winTitle.textContent = 'ИИ победил'; winSub.textContent = 'Попробуй ещё раз';
+      }
+    } else if (mode === 'online') {
+      if (winner === mySymbol) {
+        winEmoji.textContent = '🎉'; winTitle.textContent = 'Вы выиграли!'; winSub.textContent = 'Отличная игра!';
+      } else {
+        winEmoji.textContent = '😢'; winTitle.textContent = 'Соперник выиграл'; winSub.textContent = 'Реванш?';
+      }
+    } else {
+      winEmoji.textContent = winner === 'X' ? '✕' : '○';
+      winEmoji.style.color = winner === 'X' ? 'var(--x-color)' : 'var(--o-color)';
+      winTitle.textContent = winner === 'X' ? 'Победа крестика!' : 'Победа нолика!';
+      winSub.textContent   = winner + ' выиграл';
+    }
+    winOverlay.classList.add('show');
+  }
+
+  function hideWinOverlay() { winOverlay.classList.remove('show'); winEmoji.style.color = ''; }
+
+  // ── Screen navigation ────────────────────────────────────
+  function showModeScreen() {
+    if (ws) { try { ws.close(); } catch(e) {} ws = null; }
+    hideWinOverlay();
+    onlineBanner.style.display = 'none';
+    g.scores = { X: 0, O: 0, D: 0 };
+    modeScreen.classList.add('active');
+    gameScreen.classList.remove('active');
+  }
+
+  function showGameScreen(m) {
+    mode = m;
+    const badges = { ai: '🤖 ИИ', local: '👤 Вдвоём', online: '🌐 Онлайн' };
+    modeBadge.textContent = badges[m];
+    modeScreen.classList.remove('active');
+    gameScreen.classList.add('active');
+
+    if (m === 'online') {
+      mySymbol = 'X';
+      resetGameState();
+      wsConnect();
+    } else {
+      mySymbol = 'X';
+      newGame();
+    }
+  }
+
+  // ── Game reset ──────────────────────────────────────────
+  function resetGameState() {
+    g.board = Array(9).fill(null);
+    g.queue = { X: [], O: [] };
+    g.turn  = 'X';
+    g.phase = 'playing';
+    g.winner = null;
+    g.winLine = [];
+    g.halfMoves = 0;
+    g.busy = false;
+  }
+
+  function newGame() {
+    if (mode === 'online') {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'restart' }));
+        resetGameState(); hideWinOverlay(); renderAll();
+      } else {
+        wsConnect();
+      }
+      return;
+    }
+    resetGameState(); hideWinOverlay(); renderAll();
+  }
+
+  // ── Button wiring ────────────────────────────────────────
+  document.getElementById('mode-ai').addEventListener('click',     () => showGameScreen('ai'));
+  document.getElementById('mode-local').addEventListener('click',  () => showGameScreen('local'));
+  document.getElementById('mode-online').addEventListener('click', () => showGameScreen('online'));
+  backBtn.addEventListener('click', showModeScreen);
+  newGameBtn.addEventListener('click', newGame);
+  winPlayBtn.addEventListener('click', newGame);
+  winCloseBtn.addEventListener('click', hideWinOverlay);
+
+  // ── Init — start on mode screen ─────────────────────────
+  // (nothing extra needed; mode-screen is shown by default)
+  </script>
+
+  <!-- Navigation menu (shared across apps) -->
+  <script src="/assets/nav.js"></script>
+</body>
+</html>

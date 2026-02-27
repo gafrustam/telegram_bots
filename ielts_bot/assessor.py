@@ -34,19 +34,19 @@ def _load_prompt(filename: str, **kwargs: str) -> str:
 
 
 def _convert_ogg_to_mp3(ogg_path: str, mp3_path: str) -> None:
-    audio = AudioSegment.from_ogg(ogg_path)
+    audio = AudioSegment.from_file(ogg_path)
     audio.export(mp3_path, format="mp3", bitrate="64k")
 
 
 def _convert_ogg_to_mp3_trimmed(ogg_path: str, mp3_path: str, max_ms: int) -> None:
-    audio = AudioSegment.from_ogg(ogg_path)
+    audio = AudioSegment.from_file(ogg_path)
     if len(audio) > max_ms:
         audio = audio[:max_ms]
     audio.export(mp3_path, format="mp3", bitrate="64k")
 
 
 def _get_duration_seconds(ogg_path: str) -> float:
-    audio = AudioSegment.from_ogg(ogg_path)
+    audio = AudioSegment.from_file(ogg_path)
     return len(audio) / 1000.0
 
 

@@ -18,6 +18,7 @@ from aiogram.types import (
     BufferedInputFile,
     CallbackQuery,
     Message,
+    WebAppInfo,
 )
 
 import database
@@ -34,6 +35,7 @@ from keyboards import (
     PART2_BTN,
     PART3_BTN,
     STATS_BTN,
+    WEBAPP_BTN,
     interrupt_keyboard,
     main_menu_keyboard,
     results_keyboard,
@@ -210,6 +212,28 @@ async def cmd_cancel(message: Message, state: FSMContext) -> None:
         ),
     )
     await state.set_state(SpeakingStates.choosing_part)
+
+
+# ── /webapp ──────────────────────────────────────────────
+
+WEBAPP_URL = os.getenv("WEBAPP_URL", "https://gafrustam.ru/ielts/")
+
+
+@router.message(Command("webapp"))
+async def cmd_webapp(message: Message) -> None:
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="🌐 Open Web App",
+            web_app=WebAppInfo(url=WEBAPP_URL),
+        )
+    ]])
+    await message.answer(
+        "🌐 <b>IELTS Speaking Practice — Web App</b>\n\n"
+        "Тренируй спикинг прямо в браузере или в мини-приложении Telegram.",
+        parse_mode=ParseMode.HTML,
+        reply_markup=keyboard,
+    )
 
 
 # ── /mystats ─────────────────────────────────────────────
@@ -1102,10 +1126,11 @@ def _split_message(text: str, limit: int = 4096) -> list[str]:
 
 async def _set_bot_commands() -> None:
     await bot.set_my_commands([
-        BotCommand(command="start", description="Главное меню"),
-        BotCommand(command="help", description="Справка"),
-        BotCommand(command="mystats", description="Моя статистика"),
+        BotCommand(command="start",  description="Главное меню"),
+        BotCommand(command="help",   description="Справка"),
+        BotCommand(command="mystats",description="Моя статистика"),
         BotCommand(command="cancel", description="Отменить текущую сессию"),
+        BotCommand(command="webapp", description="Открыть веб-приложение"),
     ])
 
 

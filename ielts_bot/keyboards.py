@@ -1,17 +1,23 @@
+import os
+
 from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     KeyboardButton,
     ReplyKeyboardMarkup,
+    WebAppInfo,
 )
 
 from states import TopicAction, ResultAction, InterruptAction
 
-PART1_BTN = "🗣 Part 1 — Interview"
-PART2_BTN = "🎙 Part 2 — Long Turn"
-PART3_BTN = "💬 Part 3 — Discussion"
-STATS_BTN = "📊 Моя статистика"
-ADMIN_BTN = "🔧 Админ-панель"
+PART1_BTN  = "🗣 Part 1 — Interview"
+PART2_BTN  = "🎙 Part 2 — Long Turn"
+PART3_BTN  = "💬 Part 3 — Discussion"
+STATS_BTN  = "📊 Моя статистика"
+ADMIN_BTN  = "🔧 Админ-панель"
+WEBAPP_BTN = "🌐 Web App"
+
+_WEBAPP_URL = os.getenv("WEBAPP_URL", "https://gafrustam.ru/ielts/")
 
 
 def main_menu_keyboard(is_admin: bool = False) -> ReplyKeyboardMarkup:
@@ -20,6 +26,7 @@ def main_menu_keyboard(is_admin: bool = False) -> ReplyKeyboardMarkup:
         [KeyboardButton(text=PART2_BTN)],
         [KeyboardButton(text=PART3_BTN)],
         [KeyboardButton(text=STATS_BTN)],
+        [KeyboardButton(text=WEBAPP_BTN, web_app=WebAppInfo(url=_WEBAPP_URL))],
     ]
     if is_admin:
         keyboard.append([KeyboardButton(text=ADMIN_BTN)])

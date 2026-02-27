@@ -1,0 +1,191 @@
+#!/usr/bin/env python3
+"""
+Rain Monitor Agent — Koh Samui
+Runs every 30 minutes via systemd timer.
+Fetches weather from open-meteo.com (free, no key),
+uses OpenAI to compose a friendly Russian alert,
+sends Telegram notification 1 hour before rain.
+"""
+
+import json
+import os
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import httpx
+from openai import OpenAI
+
+# ── Config ────────────────────────────────────────────────────────────────────
+OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+BOT_TOKEN      = os.environ["RAIN_BOT_TOKEN"]
+CHAT_ID        = os.environ["RAIN_CHAT_ID"]
+STATE_FILE     = Path(__file__).parent / "rain_state.json"
+
+# Koh Samui, Thailand (UTC+7)
+LAT, LON              = 9.5287, 100.0628
+BANGKOK_TZ_OFFSET     = timedelta(hours=7)
+MIN_ALERT_INTERVAL_H  = 2.0   # don't alert more often than this
+RAIN_PROB_THRESHOLD   = 60    # % precipitation probability
+
+
+# ── Weather ───────────────────────────────────────────────────────────────────
+
+def fetch_forecast() -> list[dict]:
+    """Return next 4 hours of hourly forecast from open-meteo.com."""
+    resp = httpx.get(
+        "https://api.open-meteo.com/v1/forecast",
+        params={
+            "latitude":  LAT,
+            "longitude": LON,
+            "hourly": [
+                "precipitation_probability",
+                "precipitation",
+                "weathercode",
+                "temperature_2m",
+            ],
+            "forecast_days": 1,
+            "timezone": "Asia/Bangkok",
+        },
+        timeout=15,
+    )
+    resp.raise_for_status()
+    raw = resp.json()
+
+    now_bkk = datetime.now(timezone.utc) + BANGKOK_TZ_OFFSET
+    hourly  = raw["hourly"]
+    result  = []
+
+    for i, t_str in enumerate(hourly["time"]):
+        t       = datetime.fromisoformat(t_str)
+        delta_h = (t - now_bkk.replace(tzinfo=None)).total_seconds() / 3600
+        if delta_h < -0.5:
+            continue
+        if delta_h > 4:
+            break
+        result.append({
+            "time":       t_str,
+            "in_hours":   round(delta_h, 1),
+            "prob_%":     hourly["precipitation_probability"][i],
+            "mm":         hourly["precipitation"][i],
+            "wcode":      hourly["weathercode"][i],
+            "temp_c":     hourly["temperature_2m"][i],
+        })
+
+    return result
+
+
+# ── State (deduplication) ─────────────────────────────────────────────────────
+
+def load_state() -> dict:
+    try:
+        return json.loads(STATE_FILE.read_text()) if STATE_FILE.exists() else {}
+    except Exception:
+        return {}
+
+
+def can_alert() -> bool:
+    last = load_state().get("last_alert_utc")
+    if not last:
+        return True
+    last_dt   = datetime.fromisoformat(last).replace(tzinfo=timezone.utc)
+    hours_ago = (datetime.now(timezone.utc) - last_dt).total_seconds() / 3600
+    return hours_ago >= MIN_ALERT_INTERVAL_H
+
+
+def mark_alerted() -> None:
+    state = load_state()
+    state["last_alert_utc"] = datetime.now(timezone.utc).isoformat()
+    STATE_FILE.write_text(json.dumps(state, indent=2))
+
+
+# ── Alert ─────────────────────────────────────────────────────────────────────
+
+WEATHER_CODES = {
+    range(0, 1):   "ясно",
+    range(1, 4):   "облачно",
+    range(51, 58): "морось",
+    range(61, 68): "дождь",
+    range(71, 78): "снег",
+    range(80, 83): "ливень",
+    range(95, 100):"гроза",
+}
+
+def wcode_to_ru(code: int) -> str:
+    for r, name in WEATHER_CODES.items():
+        if code in r:
+            return name
+    return "осадки"
+
+
+def compose_alert(slot: dict) -> str:
+    """Use OpenAI to compose a short friendly Russian alert."""
+    client = OpenAI(api_key=OPENAI_API_KEY)
+
+    weather_type = wcode_to_ru(slot["wcode"])
+    is_storm     = slot["wcode"] >= 95
+
+    prompt = (
+        f"Напиши короткое предупреждение о дожде на Ко Самуи (Таиланд). "
+        f"Параметры: тип осадков={weather_type}, через={slot['in_hours']} ч, "
+        f"вероятность={slot['prob_%']}%, интенсивность={slot['mm']} мм, температура={slot['temp_c']}°C. "
+        f"Требования: 1-3 строки, русский язык, HTML-разметка (<b>), эмодзи {'⛈' if is_storm else '☔'}, "
+        f"укажи через сколько минут ожидать. Без лишних слов."
+    )
+
+    resp = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=120,
+        temperature=0.7,
+    )
+    return resp.choices[0].message.content.strip()
+
+
+def send_telegram(text: str) -> None:
+    resp = httpx.post(
+        f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+        json={"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"},
+        timeout=10,
+    )
+    resp.raise_for_status()
+
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+def main() -> None:
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{ts}] Rain check started")
+
+    forecast = fetch_forecast()
+    print(f"  Forecast ({len(forecast)} slots):")
+    for s in forecast:
+        print(f"    +{s['in_hours']:4.1f}h  prob={s['prob_%']:3}%  mm={s['mm']:.1f}  wcode={s['wcode']}")
+
+    # Find the nearest slot within 1 hour with rain likely
+    rain_slot = next(
+        (s for s in forecast if s["in_hours"] <= 1.0 and s["prob_%"] >= RAIN_PROB_THRESHOLD),
+        None,
+    )
+
+    if rain_slot is None:
+        print("  → No rain expected within 1 hour. Nothing to do.")
+        return
+
+    print(f"  → Rain detected: {rain_slot}")
+
+    if not can_alert():
+        state = load_state()
+        print(f"  → Alert suppressed (last sent: {state.get('last_alert_utc')})")
+        return
+
+    print("  → Composing alert with OpenAI...")
+    message = compose_alert(rain_slot)
+    print(f"  → Message: {message[:100]}")
+
+    send_telegram(message)
+    mark_alerted()
+    print("  → Alert sent and state saved.")
+
+
+if __name__ == "__main__":
+    main()

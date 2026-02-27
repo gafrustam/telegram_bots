@@ -1,0 +1,650 @@
+/**
+ * app.js — IELTS Speaking Practice SPA state machine
+ *
+ * States: menu → topic_selection → [prep_timer] → recording → assessing → results → (stats)
+ */
+
+// ── Telegram Web App detection ───────────────────────────
+
+const TgApp = window.Telegram?.WebApp || null;
+
+if (TgApp) {
+  TgApp.ready();
+  TgApp.expand();
+  // Apply Telegram theme CSS variables
+  const tp = TgApp.themeParams || {};
+  const root = document.documentElement;
+  const map = {
+    "--tg-theme-bg-color":            tp.bg_color,
+    "--tg-theme-text-color":          tp.text_color,
+    "--tg-theme-hint-color":          tp.hint_color,
+    "--tg-theme-link-color":          tp.link_color,
+    "--tg-theme-button-color":        tp.button_color,
+    "--tg-theme-button-text-color":   tp.button_text_color,
+    "--tg-theme-secondary-bg-color":  tp.secondary_bg_color,
+  };
+  for (const [k, v] of Object.entries(map)) {
+    if (v) root.style.setProperty(k, v);
+  }
+}
+
+// ── Session token ────────────────────────────────────────
+
+function getSessionToken() {
+  let token = localStorage.getItem("ielts_session_token");
+  if (!token) {
+    token = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+    localStorage.setItem("ielts_session_token", token);
+  }
+  return token;
+}
+
+const SESSION_TOKEN = getSessionToken();
+const INIT_DATA = TgApp?.initData || null;
+
+// ── State ────────────────────────────────────────────────
+
+const state = {
+  screen: "loading",
+  part: null,          // 1 | 2 | 3
+  topic: null,
+  questions: [],
+  cueCard: "",
+  currentQ: 0,
+  audioBlobs: [],
+  result: null,
+  prepTimer: null,     // interval handle
+  prepSeconds: 60,
+};
+
+const recorder = new AudioRecorder("waveform-canvas");
+
+// ── Screen management ────────────────────────────────────
+
+const SCREENS = {};
+
+function registerScreen(id, htmlFn) {
+  SCREENS[id] = htmlFn;
+}
+
+function showScreen(id) {
+  const app = document.getElementById("app");
+  // Remove existing dynamic screens
+  app.querySelectorAll(".screen:not(#loading-screen)").forEach((el) => el.remove());
+
+  state.screen = id;
+
+  const htmlFn = SCREENS[id];
+  if (!htmlFn) { console.error("Unknown screen:", id); return; }
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "screen active";
+  wrapper.id = `${id}-screen`;
+  wrapper.innerHTML = htmlFn();
+  app.appendChild(wrapper);
+
+  document.getElementById("loading-screen").classList.remove("active");
+
+  // Wire events after render
+  if (WIRE[id]) WIRE[id](wrapper);
+
+  // Telegram back button
+  if (TgApp) {
+    if (id === "menu") {
+      TgApp.BackButton.hide();
+    } else {
+      TgApp.BackButton.show();
+      TgApp.BackButton.onClick(() => navigateBack(id));
+    }
+  }
+}
+
+async function navigateBack(currentId) {
+  if (currentId === "recording") {
+    // Stop any active recording before leaving
+    if (recorder._mediaRecorder?.state === "recording") {
+      await recorder.stop().catch(() => {});
+      recorder.release();
+    }
+    state.currentQ = 0;
+    state.audioBlobs = [];
+    showScreen("topic_selection");
+    return;
+  }
+  const backMap = {
+    topic_selection: "menu",
+    prep_timer: "topic_selection",
+    results: "menu",
+    stats: "menu",
+  };
+  const target = backMap[currentId];
+  if (target) showScreen(target);
+}
+
+// ── Toast notification ───────────────────────────────────
+
+function showToast(msg, ms = 3000) {
+  let toast = document.getElementById("toast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "toast";
+    toast.className = "toast";
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.classList.add("show");
+  setTimeout(() => toast.classList.remove("show"), ms);
+}
+
+// ── Part info ────────────────────────────────────────────
+
+const PART_ICONS  = { 1: "🗣", 2: "🎙", 3: "💬" };
+const PART_NAMES  = { 1: "Part 1 — Interview", 2: "Part 2 — Long Turn", 3: "Part 3 — Discussion" };
+const PART_DESCS  = { 1: "4–5 everyday questions", 2: "2-min monologue", 3: "Abstract questions" };
+const PART_HINTS  = {
+  1: "Aim for <b>15–30 seconds</b> per answer.",
+  2: "Speak for <b>up to 2 minutes</b>.",
+  3: "Aim for <b>30–60 seconds</b> per answer.",
+};
+
+// ── Screen: menu ─────────────────────────────────────────
+
+registerScreen("menu", () => `
+  <div class="screen-header">
+    <span class="screen-title">🎓 IELTS Speaking Practice</span>
+  </div>
+
+  ${[1, 2, 3].map(p => `
+  <button class="part-card" data-part="${p}">
+    <span class="part-card-icon">${PART_ICONS[p]}</span>
+    <div class="part-card-body">
+      <div class="part-card-title">${PART_NAMES[p]}</div>
+      <div class="part-card-desc">${PART_DESCS[p]}</div>
+    </div>
+    <span class="part-card-arrow">›</span>
+  </button>`).join("")}
+
+  <button class="stats-btn" id="stats-btn">📊 My Statistics</button>
+`);
+
+// ── Screen: topic_selection ──────────────────────────────
+
+registerScreen("topic_selection", () => `
+  <div class="screen-header">
+    <button class="back-btn" id="back-btn">‹</button>
+    <span class="screen-title">${PART_NAMES[state.part]}</span>
+  </div>
+
+  <div id="topic-area">
+    <div class="loading-spinner" style="margin:40px auto"></div>
+  </div>
+
+  <div class="spacer"></div>
+`);
+
+// ── Screen: prep_timer (Part 2) ──────────────────────────
+
+registerScreen("prep_timer", () => `
+  <div class="screen-header">
+    <button class="back-btn" id="back-btn">‹</button>
+    <span class="screen-title">Part 2 — Preparation</span>
+  </div>
+
+  <div class="prep-timer-display" id="prep-countdown">1:00</div>
+  <div class="prep-progress-bar">
+    <div class="prep-progress-fill" id="prep-fill" style="width:100%"></div>
+  </div>
+
+  <div class="cue-card" id="prep-cue-card">${escapeHtml(state.cueCard)}</div>
+
+  <div class="spacer"></div>
+
+  <button class="btn btn-secondary" id="start-early-btn">🎤 Start Recording Early</button>
+`);
+
+// ── Screen: recording ────────────────────────────────────
+
+registerScreen("recording", () => {
+  const total = state.part === 2 ? 1 : state.questions.length;
+  const idx   = state.currentQ;
+  const dots  = state.part !== 2
+    ? `<div class="progress-dots">${Array.from({length: total}, (_, i) => {
+        const cls = i < idx ? "dot done" : i === idx ? "dot active" : "dot";
+        return `<span class="${cls}"></span>`;
+      }).join("")}</div>`
+    : "";
+
+  const questionHtml = state.part === 2
+    ? `<div class="cue-card">${escapeHtml(state.cueCard)}</div>`
+    : `<div class="question-bubble">${escapeHtml(state.questions[idx] || "")}</div>`;
+
+  return `
+  <div class="screen-header">
+    <button class="back-btn" id="back-btn">‹</button>
+    <span class="screen-title">Q ${idx + 1}${total > 1 ? ` / ${total}` : ""}</span>
+  </div>
+
+  ${dots}
+  ${questionHtml}
+
+  <canvas id="waveform-canvas" width="400" height="56"></canvas>
+
+  <div class="record-area">
+    <div class="record-btn-wrap">
+      <div class="record-ring" id="record-ring"></div>
+      <button class="record-btn" id="record-btn">🎤</button>
+    </div>
+    <div class="record-timer" id="record-timer">0:00</div>
+    <div class="record-hint">${PART_HINTS[state.part]}</div>
+  </div>
+
+  <div class="spacer"></div>
+
+  <button class="btn btn-primary" id="stop-btn" style="display:none">⏹ Stop &amp; Submit</button>
+`;
+});
+
+// ── Screen: assessing ────────────────────────────────────
+
+registerScreen("assessing", () => `
+  <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;text-align:center">
+    <div style="font-size:32px">🎧</div>
+    <div style="font-size:18px;font-weight:600">Analysing…</div>
+    <div class="assessing-dots">
+      <div class="assessing-dot"></div>
+      <div class="assessing-dot"></div>
+      <div class="assessing-dot"></div>
+    </div>
+    <div class="text-hint">Assessing your English…<br>15–45 seconds</div>
+    <div class="assessing-progress">
+      <div class="assessing-progress-fill"></div>
+    </div>
+  </div>
+`);
+
+// ── Screen: results ──────────────────────────────────────
+
+registerScreen("results", () => {
+  const r = state.result || {};
+  const band = r.overall_band ?? "—";
+  const criteria = [
+    { key: "fluency_coherence",     label: "Fluency & Coherence" },
+    { key: "lexical_resource",      label: "Lexical Resource" },
+    { key: "grammatical_range",     label: "Grammar & Accuracy" },
+    { key: "pronunciation",         label: "Pronunciation" },
+  ];
+
+  const criteriaHtml = criteria.map(({ key, label }) => {
+    const score = r[key] ?? 0;
+    const pct   = (score / 9) * 100;
+    const feedbackKey = key + "_feedback";
+    const feedback = r[feedbackKey] || r.feedback?.[key] || "";
+    return `
+    <div class="criterion">
+      <div class="criterion-header">
+        <span class="criterion-name">${label}</span>
+        <span class="criterion-score">${score}</span>
+      </div>
+      <div class="criterion-bar">
+        <div class="criterion-bar-fill" style="width:${pct}%"></div>
+      </div>
+    </div>
+    <div class="feedback-item">
+      <div class="feedback-header" data-feedback="${key}">
+        <span>▼ ${label} feedback</span>
+        <span class="chevron">▾</span>
+      </div>
+      <div class="feedback-body" id="fb-${key}">${escapeHtml(feedback)}</div>
+    </div>`;
+  }).join("");
+
+  return `
+  <div class="screen-header">
+    <span class="screen-title">🏆 Results — ${PART_NAMES[state.part]}</span>
+  </div>
+
+  <div class="band-badge">
+    <div class="band-number">Band ${band}</div>
+    <div class="band-label">${bandLabel(band)}</div>
+  </div>
+
+  <div class="criteria-list">${criteriaHtml}</div>
+
+  <div class="spacer"></div>
+
+  <div class="btn-row mt-auto">
+    <button class="btn btn-secondary" id="retry-btn">🔄 Try Again</button>
+    <button class="btn btn-primary"   id="menu-btn">🏠 Menu</button>
+  </div>
+`;
+});
+
+// ── Screen: stats ────────────────────────────────────────
+
+registerScreen("stats", () => `
+  <div class="screen-header">
+    <button class="back-btn" id="back-btn">‹</button>
+    <span class="screen-title">📊 My Statistics</span>
+  </div>
+  <div id="stats-content">
+    <div class="loading-spinner" style="margin:40px auto"></div>
+  </div>
+`);
+
+// ── Wire: event listeners per screen ────────────────────
+
+const WIRE = {
+
+  menu(el) {
+    el.querySelectorAll(".part-card").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        state.part = parseInt(btn.dataset.part);
+        state.currentQ = 0;
+        state.audioBlobs = [];
+        loadTopicScreen();
+      });
+    });
+    el.querySelector("#stats-btn").addEventListener("click", () => showScreen("stats"));
+  },
+
+  topic_selection(el) {
+    el.querySelector("#back-btn").addEventListener("click", () => showScreen("menu"));
+    loadTopicData(el);
+  },
+
+  prep_timer(el) {
+    el.querySelector("#back-btn").addEventListener("click", () => {
+      clearInterval(state.prepTimer);
+      showScreen("topic_selection");
+    });
+    el.querySelector("#start-early-btn").addEventListener("click", () => {
+      clearInterval(state.prepTimer);
+      state.currentQ = 0;
+      showScreen("recording");
+    });
+    startPrepTimer(el);
+  },
+
+  recording(el) {
+    const btn      = el.querySelector("#record-btn");
+    const ring     = el.querySelector("#record-ring");
+    const stopBtn  = el.querySelector("#stop-btn");
+    const timerEl  = el.querySelector("#record-timer");
+    const backBtn  = el.querySelector("#back-btn");
+    let isRecording = false;
+
+    backBtn.addEventListener("click", async () => {
+      if (isRecording) {
+        isRecording = false;
+        await recorder.stop().catch(() => {});
+        recorder.release();
+      }
+      state.currentQ = 0;
+      state.audioBlobs = [];
+      showScreen("topic_selection");
+    });
+
+    btn.addEventListener("click", async () => {
+      if (!isRecording) {
+        // Start recording
+        try {
+          await recorder.start(timerEl);
+        } catch (err) {
+          showToast("Microphone access denied: " + err.message);
+          return;
+        }
+        isRecording = true;
+        btn.classList.add("recording");
+        btn.textContent = "⏹";
+        ring.classList.add("pulsing");
+        stopBtn.style.display = "flex";
+      } else {
+        await doStopAndSubmit();
+      }
+    });
+
+    stopBtn.addEventListener("click", async () => {
+      if (isRecording) await doStopAndSubmit();
+    });
+
+    async function doStopAndSubmit() {
+      btn.disabled = true;
+      stopBtn.disabled = true;
+      ring.classList.remove("pulsing");
+
+      const blob = await recorder.stop();
+      state.audioBlobs[state.currentQ] = blob;
+
+      // Upload
+      try {
+        await submitAnswer(SESSION_TOKEN, state.currentQ, blob);
+      } catch (err) {
+        showToast("Upload error: " + err.message);
+        btn.disabled = false;
+        stopBtn.disabled = false;
+        return;
+      }
+
+      // Advance
+      const total = state.part === 2 ? 1 : state.questions.length;
+      if (state.part !== 2 && state.currentQ + 1 < total) {
+        state.currentQ++;
+        showScreen("recording");
+      } else {
+        showScreen("assessing");
+        await runAssessment();
+      }
+    }
+  },
+
+  assessing() {
+    // No interactive elements — assessment runs from recording wire
+  },
+
+  results(el) {
+    el.querySelectorAll(".feedback-header").forEach((hdr) => {
+      hdr.addEventListener("click", () => {
+        const key = hdr.dataset.feedback;
+        const body = document.getElementById(`fb-${key}`);
+        body.classList.toggle("open");
+        hdr.classList.toggle("open");
+      });
+    });
+
+    el.querySelector("#retry-btn").addEventListener("click", () => {
+      state.currentQ = 0;
+      state.audioBlobs = [];
+      if (state.part === 2) {
+        state.prepSeconds = 60;
+        showScreen("prep_timer");
+      } else {
+        showScreen("recording");
+      }
+    });
+
+    el.querySelector("#menu-btn").addEventListener("click", () => showScreen("menu"));
+  },
+
+  async stats(el) {
+    try {
+      const data = await getStats(INIT_DATA, SESSION_TOKEN);
+      renderStats(el, data);
+    } catch (err) {
+      el.querySelector("#stats-content").innerHTML = `<p class="text-hint" style="text-align:center;padding:20px">${err.message}</p>`;
+    }
+    el.querySelector("#back-btn").addEventListener("click", () => showScreen("menu"));
+  },
+};
+
+// ── Topic loading logic ──────────────────────────────────
+
+function loadTopicScreen() {
+  showScreen("topic_selection");
+}
+
+async function loadTopicData(screenEl) {
+  const area = screenEl.querySelector("#topic-area");
+
+  async function fetchTopic() {
+    area.innerHTML = `<div class="loading-spinner" style="margin:40px auto"></div>`;
+    try {
+      const data = await generateTopic(state.part, SESSION_TOKEN);
+      state.topic     = data.topic;
+      state.questions = data.questions || [];
+      state.cueCard   = data.cue_card  || "";
+      renderTopicCard(area);
+    } catch (err) {
+      area.innerHTML = `<p class="text-hint" style="text-align:center;padding:20px">${err.message}</p>
+        <button class="btn btn-secondary" id="retry-topic-btn">Try again</button>`;
+      screenEl.querySelector("#retry-topic-btn")?.addEventListener("click", fetchTopic);
+    }
+  }
+
+  function renderTopicCard(container) {
+    const questionsHtml = state.part !== 2
+      ? `<ul class="topic-questions">${state.questions.map((q, i) => `<li>${i+1}. ${escapeHtml(q)}</li>`).join("")}</ul>`
+      : `<div class="cue-card">${escapeHtml(state.cueCard)}</div>`;
+
+    const meta = state.part !== 2
+      ? `${state.questions.length} question${state.questions.length !== 1 ? "s" : ""}`
+      : "2-min monologue";
+
+    container.innerHTML = `
+      <div class="topic-card">
+        <div class="topic-name">${escapeHtml(state.topic)}</div>
+        <div class="topic-meta">${meta}</div>
+        ${questionsHtml}
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary" id="start-btn">✅ Start</button>
+        <button class="btn btn-secondary" id="another-btn">🔄 Another</button>
+      </div>
+    `;
+
+    container.querySelector("#start-btn").addEventListener("click", () => {
+      state.currentQ = 0;
+      state.audioBlobs = [];
+      if (state.part === 2) {
+        state.prepSeconds = 60;
+        showScreen("prep_timer");
+      } else {
+        showScreen("recording");
+      }
+    });
+
+    container.querySelector("#another-btn").addEventListener("click", fetchTopic);
+  }
+
+  await fetchTopic();
+}
+
+// ── Part 2 prep timer ────────────────────────────────────
+
+function startPrepTimer(screenEl) {
+  const countdownEl = screenEl.querySelector("#prep-countdown");
+  const fillEl      = screenEl.querySelector("#prep-fill");
+  const TOTAL = 60;
+  let remaining = TOTAL;
+
+  function update() {
+    const m = Math.floor(remaining / 60);
+    const s = remaining % 60;
+    countdownEl.textContent = `${m}:${s.toString().padStart(2, "0")}`;
+    fillEl.style.width = `${(remaining / TOTAL) * 100}%`;
+  }
+
+  update();
+
+  state.prepTimer = setInterval(() => {
+    remaining--;
+    update();
+    if (remaining <= 0) {
+      clearInterval(state.prepTimer);
+      // Auto-start recording
+      state.currentQ = 0;
+      showScreen("recording");
+    }
+  }, 1000);
+}
+
+// ── Assessment ───────────────────────────────────────────
+
+async function runAssessment() {
+  try {
+    const result = await requestAssessment(SESSION_TOKEN, INIT_DATA);
+    state.result = result;
+    showScreen("results");
+  } catch (err) {
+    showToast("Assessment failed: " + err.message, 5000);
+    showScreen("results");
+  }
+}
+
+// ── Stats rendering ──────────────────────────────────────
+
+function renderStats(screenEl, data) {
+  const container = screenEl.querySelector("#stats-content");
+  const summary = data.summary;
+  const recent  = data.recent || [];
+
+  if (!summary && recent.length === 0) {
+    container.innerHTML = `<p class="text-hint" style="text-align:center;padding:20px">No completed sessions yet.</p>`;
+    return;
+  }
+
+  const avgBand = summary?.avg_overall_band?.toFixed(1) ?? "—";
+  const totalSessions = summary?.total_sessions ?? recent.length;
+
+  container.innerHTML = `
+    <div class="stats-summary">
+      <div class="text-hint">Your Performance</div>
+      <div class="stats-row">
+        <div class="stats-item">
+          <div class="stats-value">${avgBand}</div>
+          <div class="stats-key">Avg Band</div>
+        </div>
+        <div class="stats-item">
+          <div class="stats-value">${totalSessions}</div>
+          <div class="stats-key">Sessions</div>
+        </div>
+      </div>
+    </div>
+    <div class="recent-list">
+      ${recent.slice(0, 10).map((r) => `
+        <div class="recent-item">
+          <div>
+            <div>${escapeHtml(r.topic || "—")}</div>
+            <div class="recent-part">Part ${r.part ?? "?"}</div>
+          </div>
+          <div class="recent-band">Band ${r.overall_band ?? "—"}</div>
+        </div>
+      `).join("") || `<p class="text-hint" style="padding:12px 0">No recent sessions.</p>`}
+    </div>
+  `;
+}
+
+// ── Helpers ──────────────────────────────────────────────
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function bandLabel(band) {
+  if (typeof band !== "number") return "";
+  if (band >= 8.5) return "C2 — Expert";
+  if (band >= 7.5) return "C1 — Very Good";
+  if (band >= 6.5) return "B2 — Good";
+  if (band >= 5.5) return "B1 — Modest";
+  if (band >= 4.5) return "A2 — Limited";
+  return "A1 — Beginner";
+}
+
+// ── Boot ─────────────────────────────────────────────────
+
+window.addEventListener("DOMContentLoaded", () => {
+  showScreen("menu");
+});
