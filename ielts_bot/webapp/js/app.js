@@ -173,7 +173,7 @@ registerScreen("menu", () => `
   </div>
 
   <div class="menu-description">
-    Выбери режим тренировки. IELTS Speaking — это все 3 части подряд, как на настоящем экзамене.
+    Выбери режим тренировки. IELTS Speaking — это все 3 части подряд, как на настоящем экзамене. Или можно потренировать конкретную часть отдельно.
   </div>
 
   <div class="spacer"></div>
@@ -299,21 +299,28 @@ registerScreen("recording", () => {
 
 // ── Screen: assessing ────────────────────────────────────
 
-registerScreen("assessing", () => `
+registerScreen("assessing", () => {
+  const isBetweenParts = state.fullMode && state.part < 3;
+  const icon      = isBetweenParts ? "✅" : "🎧";
+  const headline  = isBetweenParts
+    ? `Part ${state.part} complete`
+    : `Analysing${state.fullMode ? ` Part ${state.part}` : ""}…`;
+  const sub = isBetweenParts
+    ? `Saving results · loading Part ${state.part + 1}…`
+    : "Assessing your English…<br>15–45 seconds";
+  return `
   <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;text-align:center">
-    <div style="font-size:32px">🎧</div>
-    <div style="font-size:18px;font-weight:600">Analysing${state.fullMode ? ` Part ${state.part}` : ""}…</div>
+    <div style="font-size:32px">${icon}</div>
+    <div style="font-size:18px;font-weight:600">${headline}</div>
     <div class="assessing-dots">
       <div class="assessing-dot"></div>
       <div class="assessing-dot"></div>
       <div class="assessing-dot"></div>
     </div>
-    <div class="text-hint">Assessing your English…<br>15–45 seconds</div>
-    <div class="assessing-progress">
-      <div class="assessing-progress-fill"></div>
-    </div>
-  </div>
-`);
+    <div class="text-hint">${sub}</div>
+    ${!isBetweenParts ? `<div class="assessing-progress"><div class="assessing-progress-fill"></div></div>` : ""}
+  </div>`;
+});
 
 // ── Screen: results ──────────────────────────────────────
 
@@ -679,26 +686,23 @@ async function loadTopicData(screenEl) {
     }
   }
 
+  const PART_DESCRIPTIONS = {
+    1: "4–5 вопросов на повседневные темы. Отвечай развёрнуто — 15–30 секунд на каждый вопрос. Вопросы открываются по одному, когда начнёшь.",
+    2: "1 минута подготовки, затем 2-минутный монолог по карточке с заданием. Карточка откроется, когда начнёшь.",
+    3: "4–5 абстрактных вопросов, связанных с темой части 2. Развивай мысль — 30–60 секунд на ответ.",
+  };
+
   function renderTopicCard(container) {
-    // For Parts 1 & 3: hide questions until recording starts.
-    // The cue card for Part 2 is always visible (needed for 1-min preparation).
-    const questionsHtml = state.part === 2
-      ? `<div class="cue-card">${escapeHtml(state.cueCard)}</div>`
-      : "";
-
-    const meta = state.part !== 2
-      ? `${state.questions.length} question${state.questions.length !== 1 ? "s" : ""} · revealed when you start`
-      : "2-min monologue";
-
+    // Cue card for Part 2 is shown only on the prep timer screen, not here.
     container.innerHTML = `
       <div class="topic-card">
+        <div class="topic-label">${PART_NAMES[state.part]}</div>
         <div class="topic-name">${escapeHtml(state.topic)}</div>
-        <div class="topic-meta">${meta}</div>
-        ${questionsHtml}
+        <div class="topic-part-desc">${PART_DESCRIPTIONS[state.part]}</div>
       </div>
       <div class="btn-row">
         <button class="btn btn-primary" id="start-btn">✅ Start</button>
-        <button class="btn btn-secondary" id="another-btn">🔄 Another</button>
+        <button class="btn btn-secondary" id="another-btn">🔄 Another topic</button>
       </div>
     `;
 

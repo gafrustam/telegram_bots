@@ -31,7 +31,7 @@
       id: "poker",
       emoji: "♠",
       name: "Покер",
-      desc: "Тренировка с AI",
+      desc: "Игра против AI",
       url: "/poker/",
     },
   ];

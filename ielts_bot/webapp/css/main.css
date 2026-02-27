@@ -121,10 +121,23 @@ html, body {
   padding: 16px;
   margin-bottom: var(--gap);
 }
+.topic-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--tg-theme-hint-color);
+  margin-bottom: 6px;
+}
 .topic-name {
-  font-size: 17px;
-  font-weight: 600;
-  margin-bottom: 4px;
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.topic-part-desc {
+  font-size: 13px;
+  color: var(--tg-theme-hint-color);
+  line-height: 1.5;
 }
 .topic-meta {
   font-size: 13px;
