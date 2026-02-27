@@ -39,12 +39,13 @@ from keyboards import (
     WEBAPP_BTN,
     interrupt_keyboard,
     main_menu_keyboard,
+    question_keyboard,
     results_keyboard,
     start_keyboard,
     topic_keyboard,
 )
 from questions import generate_session
-from states import InterruptAction, ResultAction, SpeakingStates, TopicAction
+from states import InterruptAction, QuestionAction, ResultAction, SpeakingStates, TopicAction
 from tts import text_to_voice
 
 logging.basicConfig(
@@ -757,21 +758,20 @@ async def _send_question(message: Message, state: FSMContext, index: int) -> Non
 
     await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
 
-    # Part 1: audio only, no text — the question is conveyed via voice
-    if part == 1:
-        caption = f"Вопрос {index + 1}/{total}\n\n🎤 Ответьте голосовым сообщением."
-    else:
-        caption = f"Вопрос {index + 1}/{total}: <b>{question}</b>\n\n🎤 Ответьте голосовым сообщением."
+    # Parts 1 & 3: audio only, no text — question is conveyed via voice
+    caption = f"Вопрос {index + 1}/{total}\n\n🎤 Ответьте голосовым сообщением."
 
     try:
         audio_bytes = await text_to_voice(question)
         voice_file = BufferedInputFile(audio_bytes, filename="question.ogg")
-        await bot.send_voice(
+        sent = await bot.send_voice(
             chat_id=message.chat.id,
             voice=voice_file,
             caption=caption,
             parse_mode=ParseMode.HTML,
+            reply_markup=question_keyboard(),
         )
+        await state.update_data(last_question_voice_id=sent.voice.file_id)
     except Exception:
         logger.exception("TTS failed, sending text only")
         await message.answer(
@@ -779,6 +779,24 @@ async def _send_question(message: Message, state: FSMContext, index: int) -> Non
             f"🎤 Ответьте голосовым сообщением.",
             parse_mode=ParseMode.HTML,
         )
+
+
+# ── Replay question ─────────────────────────────────────
+
+@router.callback_query(QuestionAction.filter(F.action == "replay"))
+async def handle_question_replay(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    data = await state.get_data()
+    voice_id = data.get("last_question_voice_id")
+    if not voice_id:
+        await callback.answer("Аудио недоступно", show_alert=True)
+        return
+    await bot.send_voice(
+        chat_id=callback.message.chat.id,
+        voice=voice_id,
+        caption="🔄 Повтор вопроса\n\n🎤 Ответьте голосовым сообщением.",
+        reply_markup=question_keyboard(),
+    )
 
 
 # ── Part 1 voice handler ────────────────────────────────

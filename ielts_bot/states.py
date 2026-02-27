@@ -25,3 +25,7 @@ class ResultAction(CallbackData, prefix="result"):
 class InterruptAction(CallbackData, prefix="interrupt"):
     action: str  # "continue" or "new"
     new_part: int
+
+
+class QuestionAction(CallbackData, prefix="question"):
+    action: str  # "replay"

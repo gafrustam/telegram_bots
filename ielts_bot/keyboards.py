@@ -8,7 +8,7 @@ from aiogram.types import (
     WebAppInfo,
 )
 
-from states import TopicAction, ResultAction, InterruptAction
+from states import TopicAction, ResultAction, InterruptAction, QuestionAction
 
 PART1_BTN  = "🗣 Part 1 — Interview"
 PART2_BTN  = "🎙 Part 2 — Long Turn"
@@ -73,6 +73,15 @@ def results_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(
             text="📋 В меню",
             callback_data=ResultAction(action="menu").pack(),
+        )],
+    ])
+
+
+def question_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="🔄 Прослушать ещё раз",
+            callback_data=QuestionAction(action="replay").pack(),
         )],
     ])
 
