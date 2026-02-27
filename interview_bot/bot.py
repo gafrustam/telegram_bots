@@ -39,6 +39,11 @@ from keyboards import (
     wrong_answer_keyboard,
 )
 from problems_data import PROBLEMS
+try:
+    from problems_data_new import NEW_PROBLEMS
+    PROBLEMS = PROBLEMS + NEW_PROBLEMS
+except ImportError:
+    pass
 from states import ProblemStates, SetupStates, SettingsStates
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -250,9 +255,13 @@ async def on_hint(callback: CallbackQuery, state: FSMContext) -> None:
         hint_text = problem["hint2"]
         hints_revealed = 2
         prefix = "💡 <b>Подсказка 2:</b>\n"
+    elif callback.data == "hint:3":
+        hint_text = problem.get("hint3") or problem["solution_text"]
+        hints_revealed = 3
+        prefix = "💡 <b>Подсказка 3:</b>\n"
     else:  # verbal solution
         hint_text = problem["solution_text"]
-        hints_revealed = 3
+        hints_revealed = 4
         prefix = "📖 <b>Решение (словами):</b>\n"
 
     if lang == "en":
@@ -785,8 +794,13 @@ async def daily_task_scheduler(bot: Bot) -> None:
 async def main() -> None:
     db.init_db()
 
-    from problems_data import PROBLEMS
-    db.seed_problems(PROBLEMS)
+    from problems_data import PROBLEMS as _BASE
+    try:
+        from problems_data_new import NEW_PROBLEMS as _NEW
+        _ALL = _BASE + _NEW
+    except ImportError:
+        _ALL = _BASE
+    db.seed_problems(_ALL)
     log.info("DB seeded with %d problems", len(PROBLEMS))
 
     bot = Bot(token=TOKEN)

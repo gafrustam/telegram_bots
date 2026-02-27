@@ -41,10 +41,12 @@ def problem_keyboard(hints_revealed: int) -> InlineKeyboardMarkup:
     """Кнопки под задачей (пока не отправлено решение)."""
     b = InlineKeyboardBuilder()
     if hints_revealed == 0:
-        b.button(text="💡 Подсказка", callback_data="hint:1")
+        b.button(text="💡 Подсказка 1", callback_data="hint:1")
     elif hints_revealed == 1:
-        b.button(text="💡 Ещё подсказка", callback_data="hint:2")
-    elif hints_revealed >= 2:
+        b.button(text="💡 Подсказка 2", callback_data="hint:2")
+    elif hints_revealed == 2:
+        b.button(text="💡 Подсказка 3", callback_data="hint:3")
+    elif hints_revealed >= 3:
         b.button(text="📖 Решение словами", callback_data="hint:verbal")
     b.button(text="🏳️ Сдаться", callback_data="surrender")
     b.adjust(2)

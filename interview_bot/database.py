@@ -25,6 +25,7 @@ def init_db() -> None:
                 constraints     TEXT    NOT NULL,  -- JSON
                 hint1           TEXT    NOT NULL,
                 hint2           TEXT    NOT NULL,
+                hint3           TEXT    NOT NULL DEFAULT '',
                 solution_text   TEXT    NOT NULL,
                 failing_test    TEXT,
                 time_complexity TEXT,
@@ -59,23 +60,34 @@ def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_up_user ON user_problems(user_id);
             CREATE INDEX IF NOT EXISTS idx_p_level ON problems(level);
         """)
+        # Migration: add hint3 if not exists
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(problems)")}
+        if "hint3" not in cols:
+            conn.execute("ALTER TABLE problems ADD COLUMN hint3 TEXT NOT NULL DEFAULT ''")
 
 
 # ─── Problems ────────────────────────────────────────────────────────────────
 
 def seed_problems(problems: list[dict]) -> None:
-    """Insert problems that are not yet in DB (idempotent by title)."""
+    """Insert problems that are not yet in DB (idempotent by title). Updates hint3 for existing."""
     with get_conn() as conn:
         existing = {row["title"] for row in conn.execute("SELECT title FROM problems")}
         for p in problems:
             if p["title"] in existing:
+                # Update hint3 if provided and not yet set
+                hint3 = p.get("hint3", "")
+                if hint3:
+                    conn.execute(
+                        "UPDATE problems SET hint3=? WHERE title=? AND (hint3='' OR hint3 IS NULL)",
+                        (hint3, p["title"]),
+                    )
                 continue
             conn.execute(
                 """INSERT INTO problems
                    (title, level, description, examples, constraints,
-                    hint1, hint2, solution_text, failing_test,
+                    hint1, hint2, hint3, solution_text, failing_test,
                     time_complexity, space_complexity)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     p["title"],
                     p["level"],
@@ -84,6 +96,7 @@ def seed_problems(problems: list[dict]) -> None:
                     json.dumps(p.get("constraints", []), ensure_ascii=False),
                     p["hint1"],
                     p["hint2"],
+                    p.get("hint3", ""),
                     p["solution_text"],
                     p.get("failing_test"),
                     p.get("time_complexity"),

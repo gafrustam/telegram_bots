@@ -15,6 +15,7 @@ PROBLEMS = [
         "constraints": ["1 <= nums.length <= 10⁴", "-10⁹ <= nums[i] <= 10⁹"],
         "hint1": "Обойди массив в цикле и накапливай сумму в отдельной переменной.",
         "hint2": "Инициализируй `total = 0` до цикла, затем в каждой итерации делай `total += num`. После цикла — верни `total`.",
+        "hint3": "Полная реализация: `def array_sum(nums): total = 0; [total := total + n for n in nums]` — или классический цикл: `for num in nums: total += num`. Для пустого массива total=0 уже корректен.",
         "solution_text": (
             "Инициализируй переменную `total = 0`. Пройди по каждому элементу массива циклом `for num in nums` "
             "и прибавляй его к total. После цикла верни total.\n"
@@ -39,6 +40,7 @@ PROBLEMS = [
         "constraints": ["1 <= s.length <= 2×10⁵", "s содержит только ASCII символы"],
         "hint1": "Сначала оставь только буквы и цифры, приведи к нижнему регистру. Затем сравни строку с её реверсом.",
         "hint2": "В Python: `cleaned = ''.join(c.lower() for c in s if c.isalnum())`. Палиндром проверяется как `cleaned == cleaned[::-1]`.",
+        "hint3": "Два указателя без создания новой строки: `left, right = 0, len(s)-1`. Пропускай не-alnum символы (`while left < right and not s[left].isalnum(): left += 1`), затем сравни `s[left].lower() != s[right].lower()` → False.",
         "solution_text": (
             "Очисти строку: оставь только `isalnum()` символы, приведи к нижнему регистру. "
             "Затем сравни со срезом `[::-1]`. Альтернативно — два указателя с двух концов, двигая их навстречу.\n"
@@ -66,6 +68,7 @@ PROBLEMS = [
         "constraints": ["1 <= n <= 10⁴"],
         "hint1": "Используй цикл `for i in range(1, n+1)` и проверяй остаток от деления через `%`.",
         "hint2": "Важен порядок проверок: сначала делимость на 15 (или 3 и 5 одновременно), потом на 3, потом на 5.",
+        "hint3": "Структура: `if i % 15 == 0: result.append('FizzBuzz') elif i % 3 == 0: result.append('Fizz') elif i % 5 == 0: result.append('Buzz') else: result.append(str(i))`. Инициализируй `result = []` до цикла.",
         "solution_text": (
             "Пройди от 1 до n включительно. Для каждого числа: если делится на 3 и на 5 — FizzBuzz, "
             "если только на 3 — Fizz, только на 5 — Buzz, иначе str(i).\n"
@@ -90,6 +93,7 @@ PROBLEMS = [
         "constraints": ["1 <= nums.length <= 10⁴", "-10⁹ <= nums[i] <= 10⁹"],
         "hint1": "Начни с предположения, что первый элемент — максимальный. Затем сравни каждый следующий с текущим максимумом.",
         "hint2": "Инициализируй `current_max = nums[0]`. В цикле: `if num > current_max: current_max = num`.",
+        "hint3": "Полная реализация: `current_max = nums[0]; for num in nums[1:]: if num > current_max: current_max = num; return current_max`. НИКОГДА не инициализируй через 0 — это сломает массивы из отрицательных чисел.",
         "solution_text": (
             "Сохрани первый элемент как `current_max = nums[0]`. Обойди массив начиная со второго элемента, "
             "обновляй current_max если нашёл больший. Верни current_max.\n"
@@ -114,6 +118,7 @@ PROBLEMS = [
         "constraints": ["1 <= s.length <= 10⁵", "s содержит только ASCII символы"],
         "hint1": "Создай множество гласных. Пройди по строке и считай символы, входящие в это множество.",
         "hint2": "Используй `vowels = set('aeiouAEIOU')`. Затем `sum(1 for c in s if c in vowels)`.",
+        "hint3": "Классический цикл: `vowels = set('aeiouAEIOU'); count = 0; for c in s: if c in vowels: count += 1; return count`. Проверка `c in set` работает за O(1), поэтому весь алгоритм O(n).",
         "solution_text": (
             "Определи `vowels = set('aeiouAEIOU')`. Пройди по каждому символу строки и увеличивай счётчик, "
             "если символ есть в множестве. Множество (set) даёт O(1) проверку принадлежности.\n"
@@ -138,6 +143,7 @@ PROBLEMS = [
         "constraints": ["1 <= s.length <= 10⁵", "s содержит только ASCII символы"],
         "hint1": "Попробуй подход с двумя указателями: один в начале, другой в конце — обменивай символы и двигай навстречу.",
         "hint2": "Переведи строку в список (mutable), swap элементов: `left, right = right, left`, двигай `left += 1, right -= 1` пока `left < right`.",
+        "hint3": "Полная реализация: `chars = list(s); left, right = 0, len(chars)-1; while left < right: chars[left], chars[right] = chars[right], chars[left]; left += 1; right -= 1; return ''.join(chars)`. Пустая строка работает без изменений.",
         "solution_text": (
             "Переведи строку в список символов. Используй два указателя: left=0, right=len-1. "
             "Пока left < right, меняй символы местами и двигай указатели навстречу. Верни ''.join(chars).\n"
@@ -162,6 +168,7 @@ PROBLEMS = [
         "constraints": ["0 <= n <= 12"],
         "hint1": "Попробуй итеративный подход: начни с result=1 и умножай на каждое число от 1 до n.",
         "hint2": "Можно также использовать рекурсию: `factorial(n) = n * factorial(n-1)`, с базовым случаем `factorial(0) = 1`.",
+        "hint3": "Итеративно: `result = 1; for i in range(1, n+1): result *= i; return result`. Рекурсивно: `if n == 0: return 1; return n * factorial(n-1)`. Базовый случай n=0 → 1 обязателен!",
         "solution_text": (
             "Итеративно: инициализируй result=1, умножай на каждое число от 1 до n включительно.\n"
             "Рекурсивно: если n==0 верни 1, иначе верни n * factorial(n-1).\n"
@@ -187,6 +194,7 @@ PROBLEMS = [
         "constraints": ["-2³¹ <= n <= 2³¹-1"],
         "hint1": "Попробуй наивный подход: делить n на 2 пока не получится 1 или нечётное число > 1.",
         "hint2": "Хитрый трюк с битами: если n — степень двойки, то в бинарном представлении у него ровно одна единица. Проверить: `n > 0 and (n & (n-1)) == 0`.",
+        "hint3": "Разбор битового трюка: 8 = 1000₂, 7 = 0111₂. Операция 8 & 7 = 0000₂ = 0. Это работает только для степеней двойки! Реализация: `return n > 0 and (n & (n-1)) == 0`. Проверка `n > 0` исключает ноль.",
         "solution_text": (
             "Самый элегантный способ: `return n > 0 and (n & (n-1)) == 0`.\n"
             "Почему работает: у степени двойки в двоичном виде ровно одна единица (например, 8 = 1000). "
@@ -212,6 +220,7 @@ PROBLEMS = [
         "constraints": ["0 <= n <= 30"],
         "hint1": "Попробуй итеративный подход: храни два предыдущих числа и вычисляй следующее.",
         "hint2": "Инициализируй `a, b = 0, 1`. В цикле n раз: `a, b = b, a + b`. После цикла верни `a`.",
+        "hint3": "Шаг за шагом: n=0→вернуть 0, n=1→вернуть 1. Для n>1: `a, b = 0, 1; for _ in range(n): a, b = b, a+b; return a`. После первой итерации a=1,b=1; после второй a=1,b=2 и т.д.",
         "solution_text": (
             "Итеративно: `a, b = 0, 1`. Повторяй n раз: `a, b = b, a+b`. Верни a.\n"
             "Рекурсия наивная — O(2^n), не используй её для n > 30.\n"
@@ -237,6 +246,7 @@ PROBLEMS = [
         "constraints": ["1 <= s.length, t.length <= 5×10⁴", "s и t состоят из строчных букв"],
         "hint1": "Если длины разные — точно не анаграмма. Если одинаковые — нужно сравнить частоты букв.",
         "hint2": "Используй словарь или Counter для подсчёта букв каждой строки. Если словари равны — анаграмма.",
+        "hint3": "Быстрая реализация: `from collections import Counter; return Counter(s) == Counter(t)`. Или без Counter: `return sorted(s) == sorted(t)` — O(n log n). Или вручную через словарь: считай +1 для s[i] и -1 для t[i], все значения должны быть 0.",
         "solution_text": (
             "Если `len(s) != len(t)` — верни False.\n"
             "Подсчитай частоты: `Counter(s) == Counter(t)`. Или отсортируй обе строки и сравни.\n"
@@ -264,6 +274,7 @@ PROBLEMS = [
         "constraints": ["2 <= nums.length <= 10⁴", "-10⁹ <= nums[i] <= 10⁹", "-10⁹ <= target <= 10⁹"],
         "hint1": "Наивный подход — два вложенных цикла O(n²). Но можно решить за O(n) с помощью хеш-таблицы.",
         "hint2": "Создай словарь `seen = {}`. Для каждого nums[i] проверяй, есть ли `target - nums[i]` в seen. Если да — нашёл пару. Если нет — добавь `seen[nums[i]] = i`.",
+        "hint3": "Полная реализация: `seen = {}; for i, num in enumerate(nums): complement = target - num; if complement in seen: return [seen[complement], i]; seen[num] = i`. Ключ — значение, значение словаря — индекс. Один проход!",
         "solution_text": (
             "Используй хеш-таблицу: `seen = {}`. Для каждого индекса i:\n"
             "1. Вычисли `complement = target - nums[i]`.\n"
@@ -294,6 +305,7 @@ PROBLEMS = [
         "constraints": ["1 <= s.length <= 10⁴", "s состоит только из '()[]{}' "],
         "hint1": "Классическая задача на стек. Когда встречаешь открывающую скобку — кладёшь в стек. Когда закрывающую — проверяешь вершину стека.",
         "hint2": "Создай словарь пар: `pairs = {')':'(', '}':'{', ']':'['}`. Для закрывающей скобки проверяй: стек не пуст И вершина стека == pairs[char].",
+        "hint3": "Полная реализация: `stack = []; pairs = {')':'(', '}':'{', ']':'['}; for c in s: if c in '({[': stack.append(c); elif not stack or stack[-1] != pairs[c]: return False; else: stack.pop(); return len(stack) == 0`.",
         "solution_text": (
             "Стек + словарь пар `{')':'(', '}':'{', ']':'['}`. Обходи строку:\n"
             "- Открывающая скобка → push в стек.\n"
@@ -320,6 +332,7 @@ PROBLEMS = [
         "constraints": ["1 <= prices.length <= 10⁵", "0 <= prices[i] <= 10⁴"],
         "hint1": "Следи за минимальной ценой покупки, которую видел до текущего дня. Прибыль сегодня = текущая цена - min_price_so_far.",
         "hint2": "Одним проходом: `min_price = float('inf'), max_profit = 0`. Для каждой цены: обнови min_price, обнови max_profit = max(max_profit, price - min_price).",
+        "hint3": "Полная реализация: `min_price = float('inf'); max_profit = 0; for price in prices: min_price = min(min_price, price); max_profit = max(max_profit, price - min_price); return max_profit`. Обновляй min_price ДО вычисления прибыли.",
         "solution_text": (
             "Один проход: `min_price = inf, max_profit = 0`.\n"
             "Для каждой цены: `min_price = min(min_price, price)`, `max_profit = max(max_profit, price - min_price)`.\n"
@@ -344,6 +357,7 @@ PROBLEMS = [
         "constraints": ["1 <= n <= 45"],
         "hint1": "Подумай: чтобы дойти до ступеньки n, нужно было стоять либо на n-1 (и сделать 1 шаг), либо на n-2 (и сделать 2 шага). Это рекуррентное соотношение.",
         "hint2": "ways[n] = ways[n-1] + ways[n-2] — это числа Фибоначчи! Базовые случаи: ways[1]=1, ways[2]=2. Реализуй итеративно за O(n) времени O(1) памяти.",
+        "hint3": "Полная реализация: `if n == 1: return 1; if n == 2: return 2; a, b = 1, 2; for _ in range(n-2): a, b = b, a+b; return b`. Или DP-массив: `dp = [0]*(n+1); dp[1]=1; dp[2]=2; for i in range(3,n+1): dp[i]=dp[i-1]+dp[i-2]; return dp[n]`.",
         "solution_text": (
             "Это числа Фибоначчи! `ways[n] = ways[n-1] + ways[n-2]`, базис: `ways[1]=1, ways[2]=2`.\n"
             "Итеративно: `a, b = 1, 2`. Повторяй n-2 раза: `a, b = b, a+b`. Верни b.\n"
@@ -369,6 +383,7 @@ PROBLEMS = [
         "constraints": ["0 <= m, n <= 200", "-10⁹ <= nums1[i], nums2[i] <= 10⁹"],
         "hint1": "Простой способ: скопируй nums2 в nums1 с позиции m, затем отсортируй. O((m+n)log(m+n)).",
         "hint2": "Оптимально: три указателя — p1=m-1, p2=n-1, p=m+n-1. Записывай с конца: берёт большее из nums1[p1] и nums2[p2].",
+        "hint3": "Полная реализация: `p1, p2, p = m-1, n-1, m+n-1; while p2 >= 0: if p1 >= 0 and nums1[p1] > nums2[p2]: nums1[p] = nums1[p1]; p1 -= 1; else: nums1[p] = nums2[p2]; p2 -= 1; p -= 1`. Пишем с конца, поэтому элементы не затираются.",
         "solution_text": (
             "Оптимальный подход с хвоста:\n"
             "`p1, p2, p = m-1, n-1, m+n-1`\n"
@@ -394,6 +409,7 @@ PROBLEMS = [
         "constraints": ["1 <= nums.length <= 10⁴", "-10⁴ <= nums[i], target <= 10⁴", "все элементы уникальны"],
         "hint1": "Бинарный поиск: держи два указателя left=0 и right=len-1. Смотри на средний элемент mid и сужай диапазон.",
         "hint2": "`mid = (left + right) // 2`. Если `nums[mid] == target` — нашли. Если `nums[mid] < target` — left = mid + 1. Иначе right = mid - 1.",
+        "hint3": "Полная реализация: `left, right = 0, len(nums)-1; while left <= right: mid = left + (right-left)//2; if nums[mid] == target: return mid; elif nums[mid] < target: left = mid+1; else: right = mid-1; return -1`. Условие `left <= right` (не строго меньше)!",
         "solution_text": (
             "`left, right = 0, len(nums)-1`\n"
             "Пока `left <= right`: `mid = (left+right)//2`.\n"
@@ -423,6 +439,7 @@ PROBLEMS = [
         "constraints": ["1 <= nums.length <= 3×10⁴", "-100 <= nums[i] <= 100", "массив отсортирован"],
         "hint1": "Используй два указателя: `k` указывает на позицию для следующего уникального элемента, `i` обходит весь массив.",
         "hint2": "Начни с `k = 1`. Для i от 1 до len-1: если `nums[i] != nums[i-1]`, то `nums[k] = nums[i]`, `k++`.",
+        "hint3": "Полная реализация: `k = 1; for i in range(1, len(nums)): if nums[i] != nums[i-1]: nums[k] = nums[i]; k += 1; return k`. Сравниваем с предыдущим (`i-1`), а не с `nums[k-1]` — это работает потому что массив отсортирован.",
         "solution_text": (
             "Два указателя: `k = 1`.\n"
             "Для i в range(1, len(nums)): если `nums[i] != nums[i-1]` → `nums[k] = nums[i]`, `k += 1`.\n"
@@ -448,6 +465,7 @@ PROBLEMS = [
         "constraints": ["Количество узлов: [0, 5000]", "-5000 <= Node.val <= 5000"],
         "hint1": "Нужно поменять направление каждого указателя next. Используй три переменные: prev, curr, next_node.",
         "hint2": "Итерация: `prev = None, curr = head`. Пока curr: сохрани `next_node = curr.next`, установи `curr.next = prev`, сдвинь `prev = curr, curr = next_node`. Верни prev.",
+        "hint3": "Полная реализация: `prev, curr = None, head; while curr: nxt = curr.next; curr.next = prev; prev = curr; curr = nxt; return prev`. Важен порядок: сначала сохрани `nxt`, потом меняй `curr.next`, иначе потеряешь ссылку на следующий узел.",
         "solution_text": (
             "Итеративно: `prev = None, curr = head`.\n"
             "Пока curr не None:\n"
@@ -478,6 +496,7 @@ PROBLEMS = [
         "constraints": ["1 <= n <= 2³¹-1"],
         "hint1": "Нужно обнаружить цикл. Используй множество seen для хранения чисел, которые уже видел. Если число повторилось — это цикл (несчастливое). Если получил 1 — счастливое.",
         "hint2": "Функция суммы квадратов цифр: `sum(int(d)**2 for d in str(n))`. Повторяй, пока n != 1 и n не в seen.",
+        "hint3": "Полная реализация: `seen = set(); while n != 1 and n not in seen: seen.add(n); n = sum(int(d)**2 for d in str(n)); return n == 1`. Альтернатива Floyd: два указателя (медленный и быстрый) без дополнительной памяти.",
         "solution_text": (
             "Функция: `get_next(n) = sum(int(d)**2 for d in str(n))`.\n"
             "Используй `seen = set()`. Пока n != 1 и n не в seen: `seen.add(n)`, `n = get_next(n)`.\n"
@@ -504,6 +523,7 @@ PROBLEMS = [
         "constraints": ["1 <= nums1.length, nums2.length <= 1000", "0 <= nums1[i], nums2[i] <= 1000"],
         "hint1": "Используй счётчик (Counter) для одного массива. Затем пройди по второму, уменьшая счётчик при совпадении.",
         "hint2": "`count = Counter(nums1)`. Для каждого x в nums2: если `count[x] > 0` — добавь x в результат, `count[x] -= 1`.",
+        "hint3": "Полная реализация: `from collections import Counter; count = Counter(nums1); result = []; for x in nums2: if count[x] > 0: result.append(x); count[x] -= 1; return result`. Counter[несуществующий ключ] = 0, поэтому проверка `> 0` безопасна.",
         "solution_text": (
             "`count = Counter(nums1)`, `result = []`.\n"
             "Для x в nums2: если `count[x] > 0`: `result.append(x)`, `count[x] -= 1`.\n"
@@ -531,6 +551,7 @@ PROBLEMS = [
         "constraints": ["0 <= s.length <= 5×10⁴", "s состоит из ASCII символов"],
         "hint1": "Скользящее окно. Поддерживай множество символов текущего окна. Расширяй вправо, пока нет повторов. При повторе — сжимай слева.",
         "hint2": "Словарь вместо множества: `char_index = {}`, `left = 0`. Для right: если `s[right]` уже в окне → `left = max(left, char_index[s[right]] + 1)`. Обновляй `char_index[s[right]] = right`, `max_len = max(max_len, right - left + 1)`.",
+        "hint3": "Полная реализация: `left = 0; max_len = 0; char_index = {}; for right in range(len(s)): if s[right] in char_index and char_index[s[right]] >= left: left = char_index[s[right]] + 1; char_index[s[right]] = right; max_len = max(max_len, right - left + 1); return max_len`.",
         "solution_text": (
             "Скользящее окно со словарём позиций:\n"
             "`left = 0, max_len = 0, char_index = {}`.\n"
@@ -560,6 +581,7 @@ PROBLEMS = [
         "constraints": ["1 <= strs.length <= 10⁴", "0 <= strs[i].length <= 100", "strs[i] состоит из строчных букв"],
         "hint1": "Нужен способ получить одинаковый ключ для слов-анаграмм. Какой ключ будет одинаков для 'eat', 'tea', 'ate'?",
         "hint2": "Ключ — отсортированная строка: `tuple(sorted(word))`. Храни группы в словаре `defaultdict(list)`: `groups[key].append(word)`.",
+        "hint3": "Полная реализация: `from collections import defaultdict; groups = defaultdict(list); for word in strs: key = tuple(sorted(word)); groups[key].append(word); return list(groups.values())`. Ключ `tuple(sorted('eat'))` = `('a','e','t')` — одинаков для всех анаграмм.",
         "solution_text": (
             "Используй `defaultdict(list)`. Для каждого слова вычисли ключ `key = tuple(sorted(word))`. "
             "Добавь слово в `groups[key]`. Верни `list(groups.values())`.\n"
@@ -587,6 +609,7 @@ PROBLEMS = [
         "constraints": ["1 <= coins.length <= 12", "1 <= coins[i] <= 2³¹-1", "0 <= amount <= 10⁴"],
         "hint1": "Динамическое программирование. Определи `dp[i]` = минимальное количество монет для суммы i. Ищи ответ снизу вверх.",
         "hint2": "`dp = [inf] * (amount+1)`, `dp[0] = 0`. Для каждого `i` от 1 до amount, для каждой монеты c: `if c <= i: dp[i] = min(dp[i], dp[i-c]+1)`. Ответ: dp[amount] если != inf, иначе -1.",
+        "hint3": "Полная реализация: `dp = [float('inf')] * (amount+1); dp[0] = 0; for i in range(1, amount+1): for c in coins: if c <= i: dp[i] = min(dp[i], dp[i-c]+1); return dp[amount] if dp[amount] != float('inf') else -1`. Внешний цикл — по суммам, внутренний — по монетам.",
         "solution_text": (
             "`dp = [float('inf')] * (amount+1)`, `dp[0] = 0`.\n"
             "Для i от 1 до amount:\n"
@@ -615,6 +638,7 @@ PROBLEMS = [
         "constraints": ["Количество узлов: [0, 2000]", "-1000 <= Node.val <= 1000"],
         "hint1": "Используй очередь (collections.deque). Добавь корень. На каждом шаге обрабатывай все узлы текущего уровня сразу.",
         "hint2": "В начале итерации `level_size = len(queue)`. Выполни level_size раз: popleft узел, добавь его значение в список уровня, добавь детей в очередь.",
+        "hint3": "Полная реализация: `from collections import deque; if not root: return []; q = deque([root]); res = []; while q: level = []; for _ in range(len(q)): node = q.popleft(); level.append(node.val); if node.left: q.append(node.left); if node.right: q.append(node.right); res.append(level); return res`.",
         "solution_text": (
             "BFS с deque:\n"
             "`if not root: return []`\n"
@@ -646,6 +670,7 @@ PROBLEMS = [
         "constraints": ["1 <= capacity <= 3000", "0 <= key <= 10⁴", "Не более 2×10⁵ операций"],
         "hint1": "Нужны O(1) операции: словарь для быстрого доступа + упорядоченная структура для отслеживания 'свежести'. Подойдёт двусвязный список.",
         "hint2": "Python: используй `OrderedDict`. `get`: если ключ есть — `move_to_end(key)`, верни значение. `put`: если ключ есть — `move_to_end`. Если нет — добавь. Если len > capacity — `popitem(last=False)`.",
+        "hint3": "Полная реализация на Python: `from collections import OrderedDict; class LRUCache: def __init__(self, cap): self.cap = cap; self.cache = OrderedDict(); def get(self, key): if key not in self.cache: return -1; self.cache.move_to_end(key); return self.cache[key]; def put(self, key, val): if key in self.cache: self.cache.move_to_end(key); self.cache[key] = val; if len(self.cache) > self.cap: self.cache.popitem(last=False)`.",
         "solution_text": (
             "Python: `OrderedDict` — встроенный инструмент для LRU.\n"
             "`get(key)`: если key в cache → `cache.move_to_end(key)`, верни значение. Иначе -1.\n"
@@ -672,6 +697,7 @@ PROBLEMS = [
         "constraints": ["1 <= nums.length <= 10⁵", "-10⁴ <= nums[i] <= 10⁴"],
         "hint1": "Алгоритм Кадане: в каждой позиции решаем — начать новый подмассив или продолжить предыдущий?",
         "hint2": "`current_sum = nums[0], max_sum = nums[0]`. Для i от 1: `current_sum = max(nums[i], current_sum + nums[i])`, `max_sum = max(max_sum, current_sum)`.",
+        "hint3": "Полная реализация: `curr = best = nums[0]; for num in nums[1:]: curr = max(num, curr + num); best = max(best, curr); return best`. Инициализация через `nums[0]` (а не 0!) обязательна для массивов из одних отрицательных чисел.",
         "solution_text": (
             "Кадане: `current_sum = max_sum = nums[0]`.\n"
             "Для num в nums[1:]:\n"
@@ -698,6 +724,7 @@ PROBLEMS = [
         "constraints": ["1 <= m, n <= 100"],
         "hint1": "DP: `dp[i][j]` = количество путей до клетки (i, j). Первая строка и первый столбец = 1 (только один путь).",
         "hint2": "`dp[i][j] = dp[i-1][j] + dp[i][j-1]`. Можно оптимизировать до O(n) памяти, используя одномерный массив.",
+        "hint3": "Оптимизированная реализация с 1D-массивом: `dp = [1] * n; for i in range(1, m): for j in range(1, n): dp[j] += dp[j-1]; return dp[-1]`. Каждая клетка накапливает суммы из предыдущей строки и левого соседа.",
         "solution_text": (
             "DP: `dp = [[1]*n for _ in range(m)]`.\n"
             "Для i от 1 до m, j от 1 до n:\n"
@@ -725,6 +752,7 @@ PROBLEMS = [
         "constraints": ["1 <= nums.length <= 300", "nums[i] = 0, 1 или 2"],
         "hint1": "Алгоритм «Флаг Нидерландов» (Dutch National Flag) Дейкстры: три указателя — low, mid, high.",
         "hint2": "`low = 0, mid = 0, high = len-1`. Пока mid <= high: если nums[mid]==0 → swap(low,mid), low++,mid++. Если 1 → mid++. Если 2 → swap(mid,high), high--.",
+        "hint3": "Полная реализация: `lo = mid = 0; hi = len(nums)-1; while mid <= hi: if nums[mid] == 0: nums[lo], nums[mid] = nums[mid], nums[lo]; lo += 1; mid += 1; elif nums[mid] == 1: mid += 1; else: nums[mid], nums[hi] = nums[hi], nums[mid]; hi -= 1`. При swap с hi НЕ инкрементируй mid!",
         "solution_text": (
             "`low, mid, high = 0, 0, len(nums)-1`\n"
             "Пока mid <= high:\n"
@@ -755,6 +783,7 @@ PROBLEMS = [
         "constraints": ["Количество узлов: [1, 10⁴]", "-2³¹ <= Node.val <= 2³¹-1"],
         "hint1": "Наивная проверка 'левый < корень < правый' недостаточна! Нужно передавать допустимый диапазон значений при рекурсии.",
         "hint2": "Рекурсия: `is_valid(node, min_val, max_val)`. Если `node.val <= min_val` или `node.val >= max_val` → False. Рекурсивно: left с (min_val, node.val) и right с (node.val, max_val).",
+        "hint3": "Полная реализация: `def validate(node, lo, hi): if not node: return True; if node.val <= lo or node.val >= hi: return False; return validate(node.left, lo, node.val) and validate(node.right, node.val, hi); return validate(root, float('-inf'), float('inf'))`. Начальные границы: -∞ и +∞.",
         "solution_text": (
             "`def is_valid(node, lo=-inf, hi=inf):`\n"
             "  если node is None → True\n"
@@ -783,6 +812,7 @@ PROBLEMS = [
         "constraints": ["1 <= board.length, board[i].length <= 6", "1 <= word.length <= 15"],
         "hint1": "DFS + Backtracking. Для каждой ячейки попробуй начать DFS. При заходе в ячейку помечай её посещённой (например, меняй символ), при выходе — восстанавливай.",
         "hint2": "DFS(i, j, index): если index == len(word) → True. Если выход за границы или board[i][j] != word[index] → False. Помечай board[i][j] = '#', рекурсируй в 4 стороны, восстанавливай.",
+        "hint3": "Полная реализация: `def dfs(i, j, k): if k == len(word): return True; if i<0 or i>=rows or j<0 or j>=cols or board[i][j] != word[k]: return False; tmp, board[i][j] = board[i][j], '#'; found = any(dfs(i+di, j+dj, k+1) for di,dj in [(0,1),(0,-1),(1,0),(-1,0)]); board[i][j] = tmp; return found`. Запускай для каждой (i,j).",
         "solution_text": (
             "Для каждой ячейки (i,j) запускай DFS.\n"
             "DFS(i, j, k): если k == len(word) → True.\n"
@@ -811,6 +841,7 @@ PROBLEMS = [
         "constraints": ["1 <= height.length <= 2×10⁴", "0 <= height[i] <= 10⁵"],
         "hint1": "Над каждой ячейкой i воды: `min(max_left[i], max_right[i]) - height[i]`. Предвычисли массивы max_left и max_right за O(n) O(n).",
         "hint2": "Оптимально за O(1) памяти — два указателя. left=0, right=n-1, left_max=0, right_max=0. Если height[left] < height[right]: обновляй left_max, добавляй воду слева. Иначе — справа.",
+        "hint3": "Полная реализация: `l, r = 0, len(h)-1; lm = rm = water = 0; while l < r: if h[l] < h[r]: lm = max(lm, h[l]); water += lm - h[l]; l += 1; else: rm = max(rm, h[r]); water += rm - h[r]; r -= 1; return water`. Логика: у стороны с меньшей высотой ограничение — её own max.",
         "solution_text": (
             "Два указателя: `l, r = 0, n-1`, `l_max = r_max = 0`, `water = 0`.\n"
             "Пока l < r:\n"
@@ -839,6 +870,7 @@ PROBLEMS = [
         "constraints": ["0 <= lists.length <= 10⁴", "-10⁴ <= Node.val <= 10⁴", "каждый список отсортирован"],
         "hint1": "Наивный подход — слить попарно за O(k×N). Оптимально — мин-куча (heap) для хранения k 'текущих' голов списков.",
         "hint2": "Добавь голову каждого непустого списка в heap как (val, index, node). Извлекай минимум, добавляй в результат, кладёшь node.next в heap. Проблема: узлы несравнимы, используй уникальный счётчик как tiebreaker.",
+        "hint3": "Полная реализация: `heap = []; cnt = 0; for node in lists: if node: heapq.heappush(heap, (node.val, cnt, node)); cnt += 1; dummy = curr = ListNode(0); while heap: _, _, node = heapq.heappop(heap); curr.next = node; curr = node; if node.next: heapq.heappush(heap, (node.next.val, cnt, node.next)); cnt += 1; return dummy.next`.",
         "solution_text": (
             "`import heapq`\n"
             "`heap = []`, `counter = 0`\n"
@@ -867,6 +899,7 @@ PROBLEMS = [
         "constraints": ["-10⁵ <= num <= 10⁵", "Не более 5×10⁴ операций", "findMedian вызывается когда есть хотя бы 1 число"],
         "hint1": "Храни две кучи: max-heap для левой половины и min-heap для правой. Балансируй их размеры.",
         "hint2": "Python: `lo` = max-heap (хранить с минусом), `hi` = min-heap. Инвариант: `len(lo) == len(hi)` или `len(lo) == len(hi)+1`. При добавлении: push в lo, перебрось max(lo) в hi, при необходимости балансируй.",
+        "hint3": "Полная реализация addNum: `heappush(self.lo, -num); heappush(self.hi, -heappop(self.lo)); if len(self.hi) > len(self.lo): heappush(self.lo, -heappop(self.hi))`. findMedian: `if len(lo)==len(hi): return (-lo[0]+hi[0])/2; else: return -lo[0]`.",
         "solution_text": (
             "`self.lo = []` (max-heap через отрицание)\n"
             "`self.hi = []` (min-heap)\n"
@@ -895,6 +928,7 @@ PROBLEMS = [
         "constraints": ["1 <= nums.length <= 10⁵", "-10⁴ <= nums[i] <= 10⁴", "1 <= k <= nums.length"],
         "hint1": "Монотонная очередь (deque). Храни в ней индексы элементов в убывающем порядке по значению. Голова deque = максимум текущего окна.",
         "hint2": "Для каждого i: удаляй из хвоста deque элементы <= nums[i]. Удаляй из головы, если они вышли за окно (индекс <= i-k). Добавляй i в хвост. Если i >= k-1 — записывай nums[dq[0]] в результат.",
+        "hint3": "Полная реализация: `dq = deque(); res = []; for i in range(len(nums)): while dq and nums[dq[-1]] <= nums[i]: dq.pop(); dq.append(i); if dq[0] <= i-k: dq.popleft(); if i >= k-1: res.append(nums[dq[0]]); return res`. Порядок операций: pop хвост → append → pop голова → record.",
         "solution_text": (
             "`from collections import deque`\n"
             "`dq = deque()`, `result = []`\n"
@@ -923,6 +957,7 @@ PROBLEMS = [
         "constraints": ["1 <= nums.length <= 2500", "-10⁴ <= nums[i] <= 10⁴"],
         "hint1": "DP O(n²): `dp[i]` = длина LIS, оканчивающейся в i. `dp[i] = max(dp[j]+1)` для всех j < i где nums[j] < nums[i].",
         "hint2": "Оптимально O(n log n) через patience sorting: поддерживай массив `tails`, где tails[i] = наименьший хвост LIS длины i+1. Для каждого числа бинарным поиском находи позицию для замены или расширения.",
+        "hint3": "Полная реализация O(n log n): `from bisect import bisect_left; tails = []; for num in nums: i = bisect_left(tails, num); if i == len(tails): tails.append(num); else: tails[i] = num; return len(tails)`. bisect_left (а не right) для строго возрастающей последовательности.",
         "solution_text": (
             "O(n log n) через бинарный поиск:\n"
             "`tails = []`\n"
@@ -952,6 +987,7 @@ PROBLEMS = [
         "constraints": ["1 <= heights.length <= 10⁵", "0 <= heights[i] <= 10⁴"],
         "hint1": "Монотонный стек. Для каждого столбика нужно знать, как далеко влево и вправо он может 'распространиться' (не встречая столбик ниже).",
         "hint2": "Стек хранит индексы в возрастающем порядке высот. Когда находишь столбик ниже вершины стека — вычисляй площадь прямоугольника с высотой = поп-элемент, шириной = i - stack[-1] - 1.",
+        "hint3": "Полная реализация: `heights.append(0); stack = [-1]; ans = 0; for i, h in enumerate(heights): while stack[-1] != -1 and heights[stack[-1]] >= h: height = heights[stack.pop()]; width = i - stack[-1] - 1; ans = max(ans, height*width); stack.append(i); return ans`. Сентинель -1 в стеке и 0 в конце heights обязательны.",
         "solution_text": (
             "Добавь sentinel: `heights = heights + [0]`\n"
             "`stack = [-1]`, `max_area = 0`\n"
@@ -982,6 +1018,7 @@ PROBLEMS = [
         "constraints": ["Количество узлов: [0, 10⁴]", "-1000 <= Node.val <= 1000"],
         "hint1": "Обход в глубину (preorder): запоминай значения узлов и 'null' для отсутствующих. Разделяй запятой.",
         "hint2": "Serialize: DFS preorder, собирай строку. Deserialize: преобразуй строку в deque токенов. Рекурсивно: если токен == 'null' → None, иначе создай узел и рекурсируй для left и right.",
+        "hint3": "Serialize: `def ser(n): return 'null' if not n else f'{n.val},{ser(n.left)},{ser(n.right)}'`. Deserialize: `tokens = deque(data.split(',')); def des(): v = tokens.popleft(); if v=='null': return None; node = TreeNode(int(v)); node.left=des(); node.right=des(); return node; return des()`.",
         "solution_text": (
             "Serialize (preorder DFS):\n"
             "  если node None → добавь 'null'\n"
@@ -1012,6 +1049,7 @@ PROBLEMS = [
         "constraints": ["1 <= s.length <= 20", "1 <= wordDict.length <= 1000"],
         "hint1": "Рекурсия с мемоизацией (сверху вниз). Для каждого префикса s[:i] из словаря — рекурсируй для s[i:] и соединяй результаты.",
         "hint2": "Кэшируй результаты: `@lru_cache` или dict. Базовый случай: пустая строка → [''] (список с одной пустой строкой). Для каждого i: если s[:i] в словаре, добавляй s[:i] + ' ' + suffix для каждого suffix из cache[s[i:]].",
+        "hint3": "Ключевой момент: `@lru_cache def dp(start): if start==len(s): return ['']; res=[]; for end in range(start+1, len(s)+1): if s[start:end] in word_set: for rest in dp(end): res.append(s[start:end]+(' '+rest if rest else '')); return res`. Базовый случай [''] (не []) позволяет правильно склеивать слова.",
         "solution_text": (
             "```python\nfrom functools import lru_cache\n\ndef wordBreak(s, wordDict):\n"
             "    word_set = set(wordDict)\n"
@@ -1047,6 +1085,7 @@ PROBLEMS = [
         "constraints": ["1 <= k <= points.length <= 10⁴", "-10⁴ <= xi, yi <= 10⁴"],
         "hint1": "Простой способ: отсортировать по расстоянию, вернуть первые k. O(n log n). Оптимальнее — max-heap размера k или quickselect O(n).",
         "hint2": "Max-heap размера k: `heap = []`. Для каждой точки: `heappush(heap, (-dist, point))`. Если len > k: `heappop(heap)`. В конце верни все точки из heap.",
+        "hint3": "Реализация max-heap O(n log k): `import heapq; heap = []; for p in points: d = -(p[0]**2 + p[1]**2); heapq.heappush(heap, (d, p)); if len(heap) > k: heapq.heappop(heap); return [p for _, p in heap]`. Знак минус превращает min-heap Python в max-heap.",
         "solution_text": (
             "Решение 1 — сортировка: `points.sort(key=lambda p: p[0]**2 + p[1]**2)`, верни points[:k]. O(n log n).\n\n"
             "Решение 2 — max-heap O(n log k):\n"
@@ -1077,6 +1116,7 @@ PROBLEMS = [
         "constraints": ["1 <= beginWord.length <= 10", "endWord.length == beginWord.length", "1 <= wordList.length <= 5000"],
         "hint1": "BFS по графу слов. Два слова — соседи, если отличаются ровно одной буквой. Нужно найти кратчайший путь от beginWord до endWord.",
         "hint2": "Предобработка: для каждого слова создай шаблоны (wildcards): 'hot' → '*ot', 'h*t', 'ho*'. Храни в словаре `pattern → [слова]`. При BFS для каждого слова генерируй шаблоны и находи соседей за O(L²).",
+        "hint3": "Полная реализация: `if endWord not in word_set: return 0; pdict = defaultdict(list); for w in wordList: for i in range(len(w)): pdict[w[:i]+'*'+w[i+1:]].append(w); q = deque([(beginWord,1)]); visited = {beginWord}; while q: word, dist = q.popleft(); for i in range(len(word)): for nb in pdict[word[:i]+'*'+word[i+1:]]: if nb==endWord: return dist+1; if nb not in visited: visited.add(nb); q.append((nb,dist+1)); return 0`.",
         "solution_text": (
             "BFS с wildcard-словарём:\n"
             "Создай `pattern_dict = defaultdict(list)`. Для каждого слова w и каждой позиции i:\n"
