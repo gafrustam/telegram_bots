@@ -6,8 +6,9 @@ import random
 import re
 import time
 from configparser import ConfigParser
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv, dotenv_values
 
@@ -379,14 +380,15 @@ async def _send_daily_stats():
 
 
 async def _daily_stats_scheduler():
-    """Background task: sends stats every day at 12:00."""
+    """Background task: sends stats every day at 00:00 Thailand time (UTC+7)."""
+    TZ_TH = ZoneInfo("Asia/Bangkok")
     while True:
-        now = datetime.now()
-        target = now.replace(hour=12, minute=0, second=0, microsecond=0)
+        now = datetime.now(TZ_TH)
+        target = now.replace(hour=0, minute=0, second=0, microsecond=0)
         if now >= target:
             target += timedelta(days=1)
         wait_secs = (target - now).total_seconds()
-        log.info("Daily stats scheduled in %.0f seconds (at %s)", wait_secs, target.strftime("%H:%M %d.%m"))
+        log.info("Daily stats scheduled in %.0f seconds (at %s TH)", wait_secs, target.strftime("%H:%M %d.%m"))
         await asyncio.sleep(wait_secs)
         await _send_daily_stats()
 
@@ -457,7 +459,7 @@ async def handle_task(message: Message):
     text = message.text.strip()
     start_time = time.time()
 
-    status_msg = await message.answer("⏳ Запускаю ассистента...", reply_markup=STOP_KB)
+    status_msg = await message.answer("⏳ Запускаю Claude Code...", reply_markup=STOP_KB)
     stop_event = asyncio.Event()
     updater_task = asyncio.create_task(
         _update_status(status_msg, start_time, stop_event)
