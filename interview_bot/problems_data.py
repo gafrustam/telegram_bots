@@ -1130,3 +1130,6 @@ PROBLEMS = [
         "space_complexity": "O(M²·N)",
     },
 ]
+
+from problems_extra import PROBLEMS_EXTRA
+PROBLEMS = PROBLEMS + PROBLEMS_EXTRA
