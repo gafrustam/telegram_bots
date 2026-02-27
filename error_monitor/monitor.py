@@ -129,9 +129,9 @@ async def run_claude(service: str, log_context: str, working_dir: str) -> str:
         f"```\n{log_context[-4000:]}\n```\n\n"
         f"Please:\n"
         f"1. Identify the root cause by reading the relevant source files\n"
-        f"2. Fix the bug in the code\n"
-        f"3. If the service needs a restart after the fix, run: "
-        f"sudo systemctl restart {service}\n\n"
+        f"2. Fix the bug in the code\n\n"
+        f"Note: the service will be restarted automatically after your fix — "
+        f"do NOT run systemctl restart yourself.\n\n"
         f"If this is a transient issue (network, external API outage, rate limit) "
         f"that cannot be fixed by changing code, say so in one sentence.\n\n"
         f"End your response with a brief summary of what you changed (or why no change was needed)."
@@ -165,6 +165,28 @@ async def run_claude(service: str, log_context: str, working_dir: str) -> str:
         return f"⏱ Claude не уложился в {CLAUDE_TIMEOUT}с — завершаю."
     except Exception as e:
         return f"Ошибка запуска Claude: {e}"
+
+# ── Service restarter ─────────────────────────────────────
+
+async def restart_service(service: str) -> str:
+    """Restart a systemd service and return a status string."""
+    loop = asyncio.get_event_loop()
+    def _restart():
+        try:
+            r = subprocess.run(
+                ["sudo", "systemctl", "restart", service],
+                capture_output=True, text=True, timeout=30,
+            )
+            if r.returncode == 0:
+                return f"♻️ <b>{service}</b> перезапущен успешно."
+            else:
+                return (
+                    f"⚠️ Не удалось перезапустить <b>{service}</b> "
+                    f"(код {r.returncode}): {r.stderr.strip()[:200]}"
+                )
+        except Exception as e:
+            return f"⚠️ Ошибка при перезапуске <b>{service}</b>: {e}"
+    return await loop.run_in_executor(None, _restart)
 
 # ── Main error handler ────────────────────────────────────
 
@@ -207,10 +229,15 @@ async def handle_error(service: str, trigger_line: str, working_dir: str) -> Non
         await tg(f"🔧 <b>Исправляю ошибку в <code>{service}</code>…</b>")
         fix_result = await run_claude(service, log_context, working_dir)
 
-        # ── Step 4: report ─────────────────────────────────
+        # ── Step 4: restart service after fix ──────────────
+        restart_status = await restart_service(service)
+
+        # ── Step 5: report ─────────────────────────────────
         summary = fix_result[:3500]
         await tg(
-            f"✅ <b>Готово — <code>{service}</code></b>\n\n{summary}"
+            f"✅ <b>Готово — <code>{service}</code></b>\n\n"
+            f"{summary}\n\n"
+            f"{restart_status}"
         )
 
     except Exception as e:

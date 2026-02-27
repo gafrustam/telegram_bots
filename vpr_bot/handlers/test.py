@@ -11,7 +11,7 @@ from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
-from database import complete_test_session, create_test_session, get_test_detail
+from database import complete_test_session, create_test_session, get_test_detail, upsert_user
 from generator import evaluate_all_answers, generate_task
 from keyboards import (
     kb_test_answer_sent,
@@ -60,6 +60,7 @@ async def _start_test(call: CallbackQuery, state: FSMContext, mode: str) -> None
         return
 
     vpr = VPR_STRUCTURE[grade]
+    await upsert_user(call.from_user.id, call.from_user.username, call.from_user.first_name)
     session_id = await create_test_session(call.from_user.id, grade, mode)
 
     await state.set_state(VPRStates.test_in_progress)

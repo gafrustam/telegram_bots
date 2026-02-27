@@ -254,6 +254,8 @@ async def create_test_session(user_id: int, grade: int, mode: str) -> int:
         "INSERT INTO test_sessions (user_id, grade, mode) VALUES ($1, $2, $3) RETURNING id",
         user_id, grade, mode,
     )
+    if val is None:
+        raise RuntimeError("create_test_session: DB returned None (check logs for DB error)")
     return int(val)
 
 
