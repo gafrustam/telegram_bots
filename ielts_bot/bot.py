@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import tempfile
+from datetime import datetime, timedelta, timezone
 
 from dotenv import load_dotenv
 
@@ -39,6 +40,7 @@ from keyboards import (
     interrupt_keyboard,
     main_menu_keyboard,
     results_keyboard,
+    start_keyboard,
     topic_keyboard,
 )
 from questions import generate_session
@@ -111,6 +113,48 @@ PROCESSING_TEXT = (
     "лексику и связность речи. Это может занять\n"
     "некоторое время.</i>"
 )
+
+THAI_TZ = timezone(timedelta(hours=7))
+
+
+def _parse_retry_time(e: Exception) -> datetime | None:
+    """Extract retry-after timestamp from an OpenAI RateLimitError."""
+    try:
+        headers = getattr(getattr(e, "response", None), "headers", None) or {}
+        if reset_str := headers.get("x-ratelimit-reset-requests"):
+            return datetime.fromisoformat(reset_str.replace("Z", "+00:00"))
+        if retry_secs := headers.get("retry-after"):
+            return datetime.now(timezone.utc) + timedelta(seconds=float(retry_secs))
+    except Exception:
+        pass
+    try:
+        msg = str(e)
+        m = re.search(r"try again in (?:(\d+)h)?(?:(\d+)m)?(?:(\d+(?:\.\d+)?)s)?", msg)
+        if m and any(m.groups()):
+            h = int(m.group(1) or 0)
+            mins = int(m.group(2) or 0)
+            secs = float(m.group(3) or 0)
+            return datetime.now(timezone.utc) + timedelta(hours=h, minutes=mins, seconds=secs)
+    except Exception:
+        pass
+    return None
+
+
+def _format_rate_limit_msg(e: Exception) -> str:
+    reset_dt = _parse_retry_time(e)
+    if reset_dt:
+        thai_dt = reset_dt.astimezone(THAI_TZ)
+        return (
+            "⏳ <b>Дневной лимит исчерпан.</b>\n\n"
+            f"Лимит обновится в <b>{thai_dt.strftime('%H:%M')}</b> по тайскому времени "
+            f"({thai_dt.strftime('%-d %b')}).\n"
+            "Попробуй снова после этого времени."
+        )
+    return (
+        "⏳ <b>Дневной лимит исчерпан.</b>\n\n"
+        "Попробуй снова позже — лимит скоро обновится."
+    )
+
 
 PART_NAMES = {
     1: "Part 1 — Interview",
@@ -366,58 +410,18 @@ async def handle_part_selection(message: Message, state: FSMContext) -> None:
     part_map = {PART1_BTN: 1, PART2_BTN: 2, PART3_BTN: 3}
     part = part_map[message.text]
 
-    await message.answer(
-        "⏳ <i>Генерирую тему...</i>",
-        parse_mode=ParseMode.HTML,
-    )
-    await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
-
-    # For Part 3, try to link to the user's last Part 2 topic
-    related_topic = None
-    if part == 3:
-        related_topic = await database.get_last_part2_topic(message.from_user.id)
-
-    try:
-        session = await _generate_topic_session(part, message.from_user.id, related_topic)
-    except Exception:
-        logger.exception("Failed to generate session")
-        await message.answer(
-            format_error("Не удалось сгенерировать тему. Попробуйте ещё раз."),
-            parse_mode=ParseMode.HTML,
-        )
-        return
-
-    topic = session.get("topic", "General")
-    questions = session.get("questions", [])
-    cue_card = session.get("cue_card", "")
-
-    gen_topic_id = await database.save_generated_topic(
-        user_id=message.from_user.id,
-        part=part, topic=topic,
-        questions=questions or None,
-        cue_card=cue_card or None,
-    )
-
     await state.update_data(
         part=part,
-        topic=topic,
-        questions=questions,
-        cue_card=cue_card,
-        gen_topic_id=gen_topic_id,
         current_q_index=0,
         audio_file_ids=[],
         audio_durations=[],
     )
 
-    text = f"📝 <b>{PART_NAMES[part]}</b>\n\nТема: <b>{topic}</b>\n"
-    if part != 2:
-        text += f"\nВопросов: {len(questions)}\n"
-    text += f"\n{PART_INSTRUCTIONS[part]}"
-
+    text = f"📝 <b>{PART_NAMES[part]}</b>\n\n{PART_INSTRUCTIONS[part]}"
     await message.answer(
         text,
         parse_mode=ParseMode.HTML,
-        reply_markup=topic_keyboard(),
+        reply_markup=start_keyboard(),
     )
     await state.set_state(SpeakingStates.choosing_topic)
 
@@ -470,26 +474,69 @@ async def handle_another_topic(callback: CallbackQuery, state: FSMContext) -> No
 
 @router.callback_query(TopicAction.filter(F.action == "accept"), SpeakingStates.choosing_topic)
 async def handle_accept_topic(callback: CallbackQuery, state: FSMContext) -> None:
+    from openai import RateLimitError as OpenAIRateLimitError
+
     data = await state.get_data()
     part = data["part"]
-    gen_topic_id = data.get("gen_topic_id")
 
-    # Mark topic as accepted
+    await callback.answer()
+    await callback.message.edit_reply_markup(reply_markup=None)
+
+    wait_msg = await callback.message.answer(
+        "⏳ <i>Генерирую тему...</i>",
+        parse_mode=ParseMode.HTML,
+    )
+    await bot.send_chat_action(callback.message.chat.id, ChatAction.TYPING)
+
+    # For Part 3, try to link to the user's last Part 2 topic
+    related_topic = None
+    if part == 3:
+        related_topic = await database.get_last_part2_topic(callback.from_user.id)
+
+    try:
+        session = await _generate_topic_session(part, callback.from_user.id, related_topic)
+    except OpenAIRateLimitError as e:
+        logger.warning("Rate limit hit during topic generation: %s", e)
+        await wait_msg.edit_text(_format_rate_limit_msg(e), parse_mode=ParseMode.HTML)
+        return
+    except Exception:
+        logger.exception("Failed to generate session")
+        await wait_msg.edit_text(
+            format_error("Не удалось сгенерировать тему. Попробуйте ещё раз."),
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    topic = session.get("topic", "General")
+    questions = session.get("questions", [])
+    cue_card = session.get("cue_card", "")
+
+    gen_topic_id = await database.save_generated_topic(
+        user_id=callback.from_user.id,
+        part=part, topic=topic,
+        questions=questions or None,
+        cue_card=cue_card or None,
+    )
     await database.mark_topic_accepted(gen_topic_id)
 
     # Create DB session
     db_session_id = await database.create_session(
         user_id=callback.from_user.id,
         part=part,
-        topic=data["topic"],
-        questions=data.get("questions") or None,
-        cue_card=data.get("cue_card") or None,
+        topic=topic,
+        questions=questions or None,
+        cue_card=cue_card or None,
         topic_id=gen_topic_id,
     )
-    await state.update_data(db_session_id=db_session_id)
+    await state.update_data(
+        topic=topic,
+        questions=questions,
+        cue_card=cue_card,
+        gen_topic_id=gen_topic_id,
+        db_session_id=db_session_id,
+    )
 
-    await callback.answer()
-    await callback.message.edit_reply_markup(reply_markup=None)
+    await wait_msg.delete()
 
     if part == 2:
         asyncio.create_task(_start_part2_countdown(callback.message.chat.id, state))
@@ -866,13 +913,16 @@ async def _run_assessment(message: Message, state: FSMContext) -> None:
             reply_markup=results_keyboard(),
         )
 
-    except Exception:
-        logger.exception("Error during assessment")
+    except Exception as e:
+        from openai import RateLimitError as OpenAIRateLimitError
+        if isinstance(e, OpenAIRateLimitError):
+            logger.warning("Rate limit hit during assessment: %s", e)
+            err_text = _format_rate_limit_msg(e)
+        else:
+            logger.exception("Error during assessment")
+            err_text = format_error("Не удалось выполнить оценку. Попробуйте ещё раз.")
         await database.fail_session(db_session_id)
-        await status_msg.edit_text(
-            format_error("Не удалось выполнить оценку. Попробуйте ещё раз."),
-            parse_mode=ParseMode.HTML,
-        )
+        await status_msg.edit_text(err_text, parse_mode=ParseMode.HTML)
         await state.set_state(SpeakingStates.viewing_results)
         await message.answer(
             "Можешь попробовать ещё раз или выбрать другой раздел 👇",
@@ -1002,53 +1052,18 @@ async def handle_interrupt_new(
     await callback.message.edit_reply_markup(reply_markup=None)
 
     await state.clear()
-    await state.set_state(SpeakingStates.choosing_part)
-    # Simulate part selection
-    await state.update_data(_pending_part=new_part)
-    await callback.message.answer(
-        "⏳ <i>Генерирую тему...</i>",
-        parse_mode=ParseMode.HTML,
-    )
-    await bot.send_chat_action(callback.message.chat.id, ChatAction.TYPING)
-
-    # For Part 3, try to link to the user's last Part 2 topic
-    related_topic = None
-    if new_part == 3:
-        related_topic = await database.get_last_part2_topic(callback.from_user.id)
-
-    try:
-        session = await _generate_topic_session(new_part, callback.from_user.id, related_topic)
-    except Exception:
-        logger.exception("Failed to generate session")
-        await callback.message.answer(
-            format_error("Не удалось сгенерировать тему. Попробуйте ещё раз."),
-            parse_mode=ParseMode.HTML,
-        )
-        return
-
-    topic = session.get("topic", "General")
-    questions = session.get("questions", [])
-    cue_card = session.get("cue_card", "")
-
     await state.update_data(
         part=new_part,
-        topic=topic,
-        questions=questions,
-        cue_card=cue_card,
         current_q_index=0,
         audio_file_ids=[],
         audio_durations=[],
     )
 
-    text = f"📝 <b>{PART_NAMES[new_part]}</b>\n\nТема: <b>{topic}</b>\n"
-    if new_part != 2:
-        text += f"\nВопросов: {len(questions)}\n"
-    text += f"\n{PART_INSTRUCTIONS[new_part]}"
-
+    text = f"📝 <b>{PART_NAMES[new_part]}</b>\n\n{PART_INSTRUCTIONS[new_part]}"
     await callback.message.answer(
         text,
         parse_mode=ParseMode.HTML,
-        reply_markup=topic_keyboard(),
+        reply_markup=start_keyboard(),
     )
     await state.set_state(SpeakingStates.choosing_topic)
 

@@ -38,6 +38,15 @@ def main_menu_keyboard(is_admin: bool = False) -> ReplyKeyboardMarkup:
     )
 
 
+def start_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="▶️ Начать",
+            callback_data=TopicAction(action="accept").pack(),
+        )],
+    ])
+
+
 def topic_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
