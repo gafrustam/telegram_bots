@@ -27,7 +27,6 @@ from assessor import assess_part1, assess_part2, assess_part3, _get_duration_sec
 from formatter import (
     format_assessment,
     format_error,
-    format_user_stats,
     format_admin_summary,
 )
 from keyboards import (
@@ -35,7 +34,6 @@ from keyboards import (
     PART1_BTN,
     PART2_BTN,
     PART3_BTN,
-    STATS_BTN,
     WEBAPP_BTN,
     interrupt_keyboard,
     main_menu_keyboard,
@@ -284,33 +282,6 @@ async def cmd_webapp(message: Message) -> None:
     )
 
 
-# ── /mystats ─────────────────────────────────────────────
-
-@router.message(Command("mystats"))
-async def cmd_mystats(message: Message) -> None:
-    if not database.is_available():
-        await message.answer(
-            "⚠️ База данных недоступна. Попробуйте позже.",
-            parse_mode=ParseMode.HTML,
-        )
-        return
-
-    await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
-    stats = await database.get_user_stats(message.from_user.id)
-    if stats is None:
-        await message.answer(
-            "📊 <b>Статистика</b>\n\n"
-            "У вас пока нет завершённых сессий.\n"
-            "Нажмите /start, чтобы начать тренировку!",
-            parse_mode=ParseMode.HTML,
-        )
-        return
-
-    recent = await database.get_user_recent_assessments(message.from_user.id)
-    text = format_user_stats(stats, recent)
-    await message.answer(text, parse_mode=ParseMode.HTML)
-
-
 # ── /admin ───────────────────────────────────────────────
 
 def _is_admin(user_id: int = 0, username: str | None = None) -> bool:
@@ -330,33 +301,6 @@ async def cmd_admin(message: Message) -> None:
     stats = await database.get_admin_summary_stats()
     retention = await database.get_admin_retention()
     text = format_admin_summary(stats, retention)
-    await message.answer(text, parse_mode=ParseMode.HTML)
-
-
-# ── Menu button: Stats ───────────────────────────────────
-
-@router.message(F.text == STATS_BTN)
-async def handle_stats_button(message: Message, state: FSMContext) -> None:
-    if not database.is_available():
-        await message.answer(
-            "⚠️ База данных недоступна. Попробуйте позже.",
-            parse_mode=ParseMode.HTML,
-        )
-        return
-
-    await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
-    stats = await database.get_user_stats(message.from_user.id)
-    if stats is None:
-        await message.answer(
-            "📊 <b>Статистика</b>\n\n"
-            "У тебя пока нет завершённых сессий.\n"
-            "Выбери раздел экзамена и начни тренировку!",
-            parse_mode=ParseMode.HTML,
-        )
-        return
-
-    recent = await database.get_user_recent_assessments(message.from_user.id)
-    text = format_user_stats(stats, recent)
     await message.answer(text, parse_mode=ParseMode.HTML)
 
 

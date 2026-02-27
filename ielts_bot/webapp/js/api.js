@@ -71,21 +71,3 @@ async function requestAssessment(sessionToken, initData = null) {
   return resp.json();
 }
 
-/**
- * Fetch user stats.
- * @param {string|null} initData - Telegram initData (optional)
- * @param {string|null} sessionToken
- * @returns {Promise<object>}
- */
-async function getStats(initData = null, sessionToken = null) {
-  const headers = {};
-  if (initData)     headers["X-Telegram-Init-Data"] = initData;
-  if (sessionToken) headers["X-Session-Token"] = sessionToken;
-
-  const resp = await fetch(`${API_BASE}/api/stats`, { headers });
-  if (!resp.ok) {
-    const err = await resp.json().catch(() => ({}));
-    throw new Error(err.detail || `Stats failed (${resp.status})`);
-  }
-  return resp.json();
-}

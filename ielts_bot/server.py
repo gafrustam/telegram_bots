@@ -307,38 +307,6 @@ def _detect_audio_ext(data: bytes) -> str:
     return "ogg"  # default fallback
 
 
-# ── API: user stats ──────────────────────────────────────
-
-@app.get("/api/stats")
-async def api_stats(
-    x_telegram_init_data: str | None = Header(default=None),
-    x_session_token: str | None = Header(default=None),
-):
-    if not database.is_available():
-        raise HTTPException(503, "Database unavailable")
-
-    user_id = None
-    if x_telegram_init_data:
-        tg_user = _validate_telegram_init_data(x_telegram_init_data)
-        if tg_user:
-            user_id = tg_user.get("id")
-
-    if user_id is None:
-        # Anonymous browser session — check session token
-        if x_session_token and x_session_token in sessions:
-            user_id = sessions[x_session_token].user_id
-
-    if user_id is None:
-        return {"sessions": [], "summary": None}
-
-    stats = await database.get_user_stats(user_id)
-    recent = await database.get_user_recent_assessments(user_id)
-    return {
-        "summary": stats,
-        "recent": [dict(r) for r in (recent or [])],
-    }
-
-
 # ── Static files & SPA ───────────────────────────────────
 
 # Mount /static for CSS/JS assets

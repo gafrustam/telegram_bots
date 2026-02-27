@@ -258,56 +258,6 @@ async def save_assessment(session_id: int | None, user_id: int, result: dict) ->
     )
 
 
-# ── User stats queries ──────────────────────────────────
-
-async def get_user_stats(user_id: int) -> dict | None:
-    row = await _fetchrow(
-        """
-        SELECT
-            count(*)                                              AS total_sessions,
-            count(*) FILTER (WHERE s.status = 'completed')        AS completed,
-            round(avg(a.overall_band)::numeric, 1)                AS avg_overall,
-            round(avg(a.fluency_coherence)::numeric, 1)           AS avg_fc,
-            round(avg(a.lexical_resource)::numeric, 1)            AS avg_lr,
-            round(avg(a.grammatical_range_accuracy)::numeric, 1)  AS avg_gra,
-            round(avg(a.pronunciation)::numeric, 1)               AS avg_pron,
-            max(a.overall_band)                                   AS best_overall,
-            round(avg(a.overall_band) FILTER
-                (WHERE a.created_at > now() - interval '7 days')::numeric, 1) AS avg_7d,
-            count(*) FILTER
-                (WHERE a.created_at > now() - interval '7 days')  AS sessions_7d,
-            count(*) FILTER (WHERE s.part = 1 AND s.status = 'completed') AS part1_count,
-            count(*) FILTER (WHERE s.part = 2 AND s.status = 'completed') AS part2_count,
-            count(*) FILTER (WHERE s.part = 3 AND s.status = 'completed') AS part3_count,
-            round(avg(a.overall_band) FILTER (WHERE s.part = 1)::numeric, 1) AS avg_part1,
-            round(avg(a.overall_band) FILTER (WHERE s.part = 2)::numeric, 1) AS avg_part2,
-            round(avg(a.overall_band) FILTER (WHERE s.part = 3)::numeric, 1) AS avg_part3
-        FROM sessions s
-        LEFT JOIN assessments a ON a.session_id = s.id
-        WHERE s.user_id = $1
-        """,
-        user_id,
-    )
-    if not row or row["total_sessions"] == 0:
-        return None
-    return dict(row)
-
-
-async def get_user_recent_assessments(user_id: int, limit: int = 5) -> list[dict]:
-    rows = await _fetch(
-        """
-        SELECT s.part, s.topic, a.overall_band, a.created_at
-        FROM assessments a
-        JOIN sessions s ON s.id = a.session_id
-        WHERE a.user_id = $1
-        ORDER BY a.created_at DESC
-        LIMIT $2
-        """,
-        user_id, limit,
-    )
-    return [dict(r) for r in rows]
-
-
 async def get_user_id_by_username(username: str) -> int | None:
     return await _fetchval(
         "SELECT id FROM users WHERE lower(username) = lower($1)",

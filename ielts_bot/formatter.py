@@ -97,65 +97,6 @@ def format_error(error_text: str) -> str:
     )
 
 
-# ── User statistics ─────────────────────────────────────
-
-def format_user_stats(stats: dict, recent: list[dict]) -> str:
-    lines = [
-        "📊 <b>Моя статистика</b>",
-        "",
-        "━━━━━━━━━━━━━━━",
-        "📈 <b>Общие показатели</b>",
-        "━━━━━━━━━━━━━━━",
-        f"  Всего сессий: <b>{stats['total_sessions']}</b>",
-        f"  Завершено: <b>{stats['completed']}</b>",
-        f"  Средний балл: <b>{_val(stats['avg_overall'])}</b>",
-        f"  Лучший балл: <b>{_val(stats['best_overall'])}</b>",
-        "",
-        "━━━━━━━━━━━━━━━",
-        "📅 <b>За последние 7 дней</b>",
-        "━━━━━━━━━━━━━━━",
-        f"  Сессий: <b>{stats['sessions_7d']}</b>",
-        f"  Средний балл: <b>{_val(stats['avg_7d'])}</b>",
-        "",
-        "━━━━━━━━━━━━━━━",
-        "📋 <b>По разделам</b>",
-        "━━━━━━━━━━━━━━━",
-        f"  Part 1: <b>{stats['part1_count']}</b> сессий — ∅ <b>{_val(stats.get('avg_part1'))}</b>",
-        f"  Part 2: <b>{stats['part2_count']}</b> сессий — ∅ <b>{_val(stats.get('avg_part2'))}</b>",
-        f"  Part 3: <b>{stats['part3_count']}</b> сессий — ∅ <b>{_val(stats.get('avg_part3'))}</b>",
-        "",
-        "━━━━━━━━━━━━━━━",
-        "🔬 <b>Средний балл по критериям</b>",
-        "━━━━━━━━━━━━━━━",
-    ]
-
-    criteria_map = [
-        ("avg_fc", "Fluency & Coherence"),
-        ("avg_lr", "Lexical Resource"),
-        ("avg_gra", "Grammar Range & Accuracy"),
-        ("avg_pron", "Pronunciation"),
-    ]
-    for key, label in criteria_map:
-        val = stats.get(key)
-        emoji = _band_emoji(float(val)) if val is not None else "⚪"
-        lines.append(f"  {emoji}  {label}: <b>{_val(val)}</b>")
-
-    if recent:
-        lines.append("")
-        lines.append("━━━━━━━━━━━━━━━")
-        lines.append("🕐 <b>Последние результаты</b>")
-        lines.append("━━━━━━━━━━━━━━━")
-        for r in recent:
-            dt: datetime = r["created_at"]
-            date_str = dt.strftime("%d.%m")
-            part = PART_NAMES.get(r["part"], f"Part {r['part']}")
-            topic = _esc(r["topic"])
-            band = r["overall_band"]
-            lines.append(f"  {part} «{topic}» — <b>{band}</b>  ({date_str})")
-
-    return "\n".join(lines)
-
-
 # ── Admin formatting ────────────────────────────────────
 
 def format_admin_summary(stats: dict, retention: dict) -> str:

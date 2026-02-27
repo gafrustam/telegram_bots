@@ -13,7 +13,6 @@ from states import TopicAction, ResultAction, InterruptAction, QuestionAction
 PART1_BTN  = "🗣 Part 1 — Interview"
 PART2_BTN  = "🎙 Part 2 — Long Turn"
 PART3_BTN  = "💬 Part 3 — Discussion"
-STATS_BTN  = "📊 Моя статистика"
 ADMIN_BTN  = "🔧 Админ-панель"
 WEBAPP_BTN = "🌐 Web App"
 
@@ -27,7 +26,6 @@ def main_menu_keyboard(is_admin: bool = False) -> ReplyKeyboardMarkup:
         # [KeyboardButton(text=PART1_BTN)],   # RESTORE: Part 1
         # [KeyboardButton(text=PART2_BTN)],   # RESTORE: Part 2
         # [KeyboardButton(text=PART3_BTN)],   # RESTORE: Part 3
-        # [KeyboardButton(text=STATS_BTN)],   # RESTORE: Stats
         [KeyboardButton(text=WEBAPP_BTN, web_app=WebAppInfo(url=_WEBAPP_URL))],
     ]
     if is_admin:

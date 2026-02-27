@@ -124,7 +124,7 @@ async function navigateBack(currentId) {
     prep_timer: "topic_selection",
     results: "menu",
     full_results: "menu",
-    stats: "menu",
+
   };
   const target = backMap[currentId];
   if (target) {
@@ -187,7 +187,6 @@ registerScreen("menu", () => `
     📚 Отдельные части
   </button>
 
-  <button class="stats-btn" id="stats-btn">📊 Моя статистика</button>
 `);
 
 // ── Screen: parts_menu ────────────────────────────────────
@@ -440,17 +439,6 @@ registerScreen("full_results", () => {
 `;
 });
 
-// ── Screen: stats ────────────────────────────────────────
-
-registerScreen("stats", () => `
-  <div class="screen-header">
-    <button class="back-btn" id="back-btn">‹</button>
-    <span class="screen-title">📊 My Statistics</span>
-  </div>
-  <div id="stats-content">
-    <div class="loading-spinner" style="margin:40px auto"></div>
-  </div>
-`);
 
 // ── Wire: event listeners per screen ────────────────────
 
@@ -471,7 +459,6 @@ const WIRE = {
       showScreen("parts_menu");
     });
 
-    el.querySelector("#stats-btn").addEventListener("click", () => showScreen("stats"));
   },
 
   parts_menu(el) {
@@ -651,15 +638,6 @@ const WIRE = {
     });
   },
 
-  async stats(el) {
-    try {
-      const data = await getStats(INIT_DATA, SESSION_TOKEN);
-      renderStats(el, data);
-    } catch (err) {
-      el.querySelector("#stats-content").innerHTML = `<p class="text-hint" style="text-align:center;padding:20px">${err.message}</p>`;
-    }
-    el.querySelector("#back-btn").addEventListener("click", () => showScreen("menu"));
-  },
 };
 
 // ── Topic loading logic ──────────────────────────────────
@@ -792,49 +770,6 @@ async function runAssessment() {
       showScreen("results");
     }
   }
-}
-
-// ── Stats rendering ──────────────────────────────────────
-
-function renderStats(screenEl, data) {
-  const container = screenEl.querySelector("#stats-content");
-  const summary = data.summary;
-  const recent  = data.recent || [];
-
-  if (!summary && recent.length === 0) {
-    container.innerHTML = `<p class="text-hint" style="text-align:center;padding:20px">No completed sessions yet.</p>`;
-    return;
-  }
-
-  const avgBand = summary?.avg_overall_band?.toFixed(1) ?? "—";
-  const totalSessions = summary?.total_sessions ?? recent.length;
-
-  container.innerHTML = `
-    <div class="stats-summary">
-      <div class="text-hint">Your Performance</div>
-      <div class="stats-row">
-        <div class="stats-item">
-          <div class="stats-value">${avgBand}</div>
-          <div class="stats-key">Avg Band</div>
-        </div>
-        <div class="stats-item">
-          <div class="stats-value">${totalSessions}</div>
-          <div class="stats-key">Sessions</div>
-        </div>
-      </div>
-    </div>
-    <div class="recent-list">
-      ${recent.slice(0, 10).map((r) => `
-        <div class="recent-item">
-          <div>
-            <div>${escapeHtml(r.topic || "—")}</div>
-            <div class="recent-part">Part ${r.part ?? "?"}</div>
-          </div>
-          <div class="recent-band">Band ${r.overall_band ?? "—"}</div>
-        </div>
-      `).join("") || `<p class="text-hint" style="padding:12px 0">No recent sessions.</p>`}
-    </div>
-  `;
 }
 
 // ── Helpers ──────────────────────────────────────────────
