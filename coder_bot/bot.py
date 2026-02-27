@@ -6,9 +6,10 @@ import random
 import re
 import time
 from configparser import ConfigParser
+from datetime import datetime, timedelta
 from pathlib import Path
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv, dotenv_values
 
 load_dotenv()
 
@@ -27,6 +28,7 @@ log = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 ALLOWED_USER = "gafrustam"
+ADMIN_CHAT_ID = 138468116
 CLAUDE_PATH = "/home/ubuntu/.local/bin/claude"
 REPO_ROOT = "/home/ubuntu/telegram_bots"
 MAX_MSG_LEN = 4096
@@ -66,10 +68,10 @@ STOP_KB = InlineKeyboardMarkup(
 )
 
 
-def _get_head() -> str:
-    """Get current git HEAD sha."""
-    import subprocess
+# ── Git helpers ─────────────────────────────────────────────────────────────
 
+def _get_head() -> str:
+    import subprocess
     r = subprocess.run(
         ["git", "rev-parse", "HEAD"],
         cwd=REPO_ROOT,
@@ -80,9 +82,7 @@ def _get_head() -> str:
 
 
 def _get_changed_dirs(old_head: str) -> set[str]:
-    """Return set of top-level directory names committed since old_head."""
     import subprocess
-
     r = subprocess.run(
         ["git", "diff", "--name-only", f"{old_head}..HEAD"],
         cwd=REPO_ROOT,
@@ -90,7 +90,6 @@ def _get_changed_dirs(old_head: str) -> set[str]:
         text=True,
     )
     changed_files = set(r.stdout.strip().splitlines())
-
     dirs = set()
     for f in changed_files:
         if not f:
@@ -102,10 +101,7 @@ def _get_changed_dirs(old_head: str) -> set[str]:
 
 
 async def _commit_and_push(chat_id: int):
-    """Commit any uncommitted changes and push to remote."""
     import subprocess
-
-    # Stage and commit if anything is left uncommitted
     status = subprocess.run(
         ["git", "status", "--porcelain"],
         cwd=REPO_ROOT,
@@ -119,8 +115,6 @@ async def _commit_and_push(chat_id: int):
             cwd=REPO_ROOT,
             capture_output=True,
         )
-
-    # Push
     r = subprocess.run(
         ["git", "push"],
         cwd=REPO_ROOT,
@@ -135,7 +129,6 @@ async def _commit_and_push(chat_id: int):
 
 
 def _map_dirs_to_services() -> dict[str, str]:
-    """Parse systemd service files to map WorkingDirectory basename → service name."""
     mapping: dict[str, str] = {}
     for path in glob.glob("/etc/systemd/system/*bot*.service"):
         cp = ConfigParser()
@@ -149,7 +142,6 @@ def _map_dirs_to_services() -> dict[str, str]:
 
 
 async def _restart_services(changed_dirs: set[str], chat_id: int):
-    """Restart systemd services whose working directories were modified."""
     dir_to_service = _map_dirs_to_services()
     restart_self = False
     restarted = []
@@ -178,14 +170,10 @@ async def _restart_services(changed_dirs: set[str], chat_id: int):
     if restart_self:
         await bot.send_message(chat_id, "🔄 Перезапускаю себя...")
         await asyncio.sleep(1)
-        proc = await asyncio.create_subprocess_exec(
-            "sudo", "systemctl", "restart", "coder-bot",
-        )
-        # won't reach here after restart
+        await asyncio.create_subprocess_exec("sudo", "systemctl", "restart", "coder-bot")
 
 
 async def _update_status(msg: Message, start_time: float, stop_event: asyncio.Event):
-    """Edit status message every 30s with elapsed time."""
     while not stop_event.is_set():
         await asyncio.sleep(30)
         if stop_event.is_set():
@@ -194,7 +182,7 @@ async def _update_status(msg: Message, start_time: float, stop_event: asyncio.Ev
         mins, secs = divmod(elapsed, 60)
         try:
             await msg.edit_text(
-                f"⏳ Claude Code работает... ({mins}:{secs:02d})",
+                f"⏳ Ассистент работает... ({mins}:{secs:02d})",
                 reply_markup=STOP_KB,
             )
         except Exception:
@@ -202,7 +190,6 @@ async def _update_status(msg: Message, start_time: float, stop_event: asyncio.Ev
 
 
 def _is_rate_limited(output: str) -> bool:
-    """Check if output indicates a rate limit error."""
     lower = output.lower()
     return any(
         phrase in lower
@@ -211,14 +198,200 @@ def _is_rate_limited(output: str) -> bool:
 
 
 async def _send_chunked(chat_id: int, text: str):
-    """Send text split into 4096-char chunks."""
     if not text.strip():
-        await bot.send_message(chat_id, "⚠️ Claude Code вернул пустой ответ.")
+        await bot.send_message(chat_id, "⚠️ Ассистент вернул пустой ответ.")
         return
     for i in range(0, len(text), MAX_MSG_LEN):
         chunk = text[i : i + MAX_MSG_LEN]
         await bot.send_message(chat_id, chunk)
 
+
+# ── Daily stats ──────────────────────────────────────────────────────────────
+
+def _format_user_list(users: list[str], total: int, new_users: list[str]) -> str:
+    """
+    Format user display according to rules:
+    - total <= 10: show all usernames
+    - total > 10, new_users <= 20: show only new users with names
+    - new_users > 20: show only numbers
+    """
+    n_new = len(new_users)
+    if total <= 10:
+        return f"  Активных: {total}, новых: {n_new}\n  Пользователи: {', '.join(users) or '—'}"
+    elif n_new <= 20:
+        names = ', '.join(new_users) if new_users else 'нет новых'
+        return f"  Активных: {total}, новых: {n_new}\n  Новые: {names}"
+    else:
+        return f"  Активных: {total}, новых: {n_new}"
+
+
+async def _collect_ielts_stats(env_path: str) -> str | None:
+    """Query IELTS PostgreSQL for today's activity."""
+    try:
+        import asyncpg
+        env = dotenv_values(env_path)
+        dsn = env.get("DATABASE_URL")
+        if not dsn:
+            return None
+        conn = await asyncpg.connect(dsn=dsn, timeout=8)
+        try:
+            rows = await conn.fetch("""
+                SELECT DISTINCT u.username, u.id,
+                       (DATE(u.created_at) = CURRENT_DATE) AS is_new
+                FROM users u
+                JOIN sessions s ON s.user_id = u.id
+                WHERE DATE(s.started_at) = CURRENT_DATE
+            """)
+        finally:
+            await conn.close()
+
+        if not rows:
+            return None
+
+        total = len(rows)
+        all_names = [
+            f"@{r['username']}" if r['username'] else f"id{r['id']}"
+            for r in rows
+        ]
+        new_names = [
+            f"@{r['username']}" if r['username'] else f"id{r['id']}"
+            for r in rows if r['is_new']
+        ]
+        body = _format_user_list(all_names, total, new_names)
+        return f"🎓 IELTS Speaking Bot\n{body}"
+    except Exception as e:
+        log.warning("IELTS stats error: %s", e)
+        return None
+
+
+async def _collect_vpr_stats(env_path: str) -> str | None:
+    """Query VPR PostgreSQL for today's activity."""
+    try:
+        import asyncpg
+        env = dotenv_values(env_path)
+        dsn = env.get("DATABASE_URL")
+        if not dsn:
+            return None
+        conn = await asyncpg.connect(dsn=dsn, timeout=8)
+        try:
+            rows = await conn.fetch("""
+                SELECT DISTINCT u.username, u.user_id,
+                       (DATE(u.created_at) = CURRENT_DATE) AS is_new
+                FROM users u
+                JOIN task_attempts ta ON ta.user_id = u.user_id
+                WHERE DATE(ta.attempted_at) = CURRENT_DATE
+                UNION
+                SELECT DISTINCT u.username, u.user_id,
+                       (DATE(u.created_at) = CURRENT_DATE) AS is_new
+                FROM users u
+                JOIN test_sessions ts ON ts.user_id = u.user_id
+                WHERE DATE(ts.started_at) = CURRENT_DATE
+            """)
+        finally:
+            await conn.close()
+
+        if not rows:
+            return None
+
+        # Deduplicate (UNION may return dupes across both tables)
+        seen = set()
+        unique_rows = []
+        for r in rows:
+            uid = r['user_id']
+            if uid not in seen:
+                seen.add(uid)
+                unique_rows.append(r)
+
+        total = len(unique_rows)
+        all_names = [
+            f"@{r['username']}" if r['username'] else f"id{r['user_id']}"
+            for r in unique_rows
+        ]
+        new_names = [
+            f"@{r['username']}" if r['username'] else f"id{r['user_id']}"
+            for r in unique_rows if r['is_new']
+        ]
+        body = _format_user_list(all_names, total, new_names)
+        return f"📝 ВПР Бот\n{body}"
+    except Exception as e:
+        log.warning("VPR stats error: %s", e)
+        return None
+
+
+async def _collect_poker_stats(db_path: str) -> str | None:
+    """Query Poker SQLite for today's activity."""
+    try:
+        import aiosqlite
+        if not Path(db_path).exists():
+            return None
+        async with aiosqlite.connect(db_path) as db:
+            async with db.execute("""
+                SELECT user_id FROM game_sessions
+                WHERE DATE(updated_at) = DATE('now')
+            """) as cur:
+                rows = await cur.fetchall()
+
+        if not rows:
+            return None
+
+        total = len(rows)
+        all_names = [str(r[0]) for r in rows]
+        # Poker DB has no registration date, so no "new" distinction
+        if total <= 10:
+            body = f"  Активных: {total}\n  Пользователи: {', '.join(all_names)}"
+        else:
+            body = f"  Активных: {total}"
+        return f"🃏 Poker Bot\n{body}"
+    except Exception as e:
+        log.warning("Poker stats error: %s", e)
+        return None
+
+
+async def _send_daily_stats():
+    """Collect and send daily usage statistics."""
+    date_str = datetime.now().strftime("%d.%m.%Y")
+    sections = []
+
+    # IELTS
+    s = await _collect_ielts_stats(f"{REPO_ROOT}/ielts_bot/.env")
+    if s:
+        sections.append(s)
+
+    # VPR
+    s = await _collect_vpr_stats(f"{REPO_ROOT}/vpr_bot/.env")
+    if s:
+        sections.append(s)
+
+    # Poker
+    s = await _collect_poker_stats(f"{REPO_ROOT}/poker_bot/poker.db")
+    if s:
+        sections.append(s)
+
+    if not sections:
+        text = f"📊 Статистика за {date_str}\n\nНикто не пользовался сервисами сегодня."
+    else:
+        text = f"📊 Статистика за {date_str}\n\n" + "\n\n".join(sections)
+
+    try:
+        await bot.send_message(ADMIN_CHAT_ID, text)
+    except Exception as e:
+        log.error("Failed to send daily stats: %s", e)
+
+
+async def _daily_stats_scheduler():
+    """Background task: sends stats every day at 12:00."""
+    while True:
+        now = datetime.now()
+        target = now.replace(hour=12, minute=0, second=0, microsecond=0)
+        if now >= target:
+            target += timedelta(days=1)
+        wait_secs = (target - now).total_seconds()
+        log.info("Daily stats scheduled in %.0f seconds (at %s)", wait_secs, target.strftime("%H:%M %d.%m"))
+        await asyncio.sleep(wait_secs)
+        await _send_daily_stats()
+
+
+# ── Bot handlers ─────────────────────────────────────────────────────────────
 
 @router.message(CommandStart())
 async def cmd_start(message: Message):
@@ -228,8 +401,8 @@ async def cmd_start(message: Message):
         ]
     )
     await message.answer(
-        "⚡️ <b>Твой код — твоя суперсила.</b>\n"
-        "🚀 Опиши задачу — и она оживёт.",
+        "🤖 <b>Ассистент</b>\n"
+        "Опиши задачу — выполню.",
         reply_markup=kb,
         parse_mode="HTML",
     )
@@ -237,16 +410,12 @@ async def cmd_start(message: Message):
 
 @router.callback_query(F.data == "limits")
 async def cb_limits(callback: CallbackQuery):
-    # Try to find usage info from Claude's cache files
     info_lines = []
     cache_dir = Path.home() / ".claude"
     try:
-        # Check statsig cache for usage data
         cache_files = list(cache_dir.glob("statsig/cache_v2*"))
         if cache_files:
             info_lines.append(f"Найдено кэш-файлов: {len(cache_files)}")
-
-        # Check if there's a recent rate limit log
         settings = cache_dir / "settings.json"
         if settings.exists():
             info_lines.append("Конфигурация Claude: ✅")
@@ -288,7 +457,7 @@ async def handle_task(message: Message):
     text = message.text.strip()
     start_time = time.time()
 
-    status_msg = await message.answer("⏳ Запускаю Claude Code...", reply_markup=STOP_KB)
+    status_msg = await message.answer("⏳ Запускаю ассистента...", reply_markup=STOP_KB)
     stop_event = asyncio.Event()
     updater_task = asyncio.create_task(
         _update_status(status_msg, start_time, stop_event)
@@ -297,12 +466,10 @@ async def handle_task(message: Message):
     try:
         old_head = _get_head()
 
-        # Build command
         cmd = [CLAUDE_PATH, "-p", text, "--dangerously-skip-permissions", "--output-format", "text"]
         if text.lower() in CONTINUE_WORDS:
             cmd.append("--continue")
 
-        # Env: remove CLAUDECODE to avoid nesting error
         env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
 
         _proc = await asyncio.create_subprocess_exec(
@@ -330,33 +497,27 @@ async def handle_task(message: Message):
                 await _send_chunked(message.chat.id, output)
             return
 
-        # Edit status to show completion time
         try:
             await status_msg.edit_text(f"✅ Готово за {mins}:{secs:02d}")
         except Exception:
             pass
 
-        # Check for rate limit
         if _is_rate_limited(output):
-            await message.answer("⚠️ Claude Code сообщает о rate limit. Попробуй позже.")
+            await message.answer("⚠️ Ассистент сообщает о rate limit. Попробуй позже.")
 
-        # Send output
         await _send_chunked(message.chat.id, output)
 
-        # Commit remaining changes and push
         await _commit_and_push(message.chat.id)
 
-        # Restart only services whose dirs were touched in this run
         changed_dirs = _get_changed_dirs(old_head)
         if changed_dirs:
             await _restart_services(changed_dirs, message.chat.id)
 
-        # Send a creation quote
         await message.answer(f"\n{random.choice(CREATION_QUOTES)}")
 
     except Exception as e:
         stop_event.set()
-        log.exception("Error running Claude Code")
+        log.exception("Error running assistant")
         await message.answer(f"❌ Ошибка: {e}")
     finally:
         _busy = False
@@ -367,7 +528,8 @@ async def handle_task(message: Message):
 
 
 async def main():
-    log.info("Coder bot starting...")
+    log.info("Assistant bot starting...")
+    asyncio.create_task(_daily_stats_scheduler())
     await dp.start_polling(bot)
 
 

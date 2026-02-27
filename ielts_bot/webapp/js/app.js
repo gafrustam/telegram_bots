@@ -55,6 +55,7 @@ const state = {
   result: null,
   prepTimer: null,
   prepSeconds: 60,
+  prevScreen: null,    // screen to return to from topic_selection
   // Full Speaking mode
   fullMode: false,     // true when practicing all 3 parts in sequence
   fullResults: [],     // [part1Result, part2Result, part3Result]
@@ -110,8 +111,16 @@ async function navigateBack(currentId) {
     showScreen("topic_selection");
     return;
   }
+  if (currentId === "topic_selection") {
+    const target = state.prevScreen || "menu";
+    state.prevScreen = null;
+    state.fullMode = false;
+    state.fullResults = [];
+    showScreen(target);
+    return;
+  }
   const backMap = {
-    topic_selection: "menu",
+    parts_menu: "menu",
     prep_timer: "topic_selection",
     results: "menu",
     full_results: "menu",
@@ -119,7 +128,7 @@ async function navigateBack(currentId) {
   };
   const target = backMap[currentId];
   if (target) {
-    if (currentId === "topic_selection" || target === "menu") {
+    if (target === "menu") {
       state.fullMode = false;
       state.fullResults = [];
     }
@@ -163,6 +172,32 @@ registerScreen("menu", () => `
     <span class="screen-title">🎓 IELTS Speaking Practice</span>
   </div>
 
+  <div class="menu-description">
+    Выбери режим тренировки. IELTS Speaking — это все 3 части подряд, как на настоящем экзамене.
+  </div>
+
+  <div class="spacer"></div>
+
+  <button class="full-speaking-btn" id="full-speaking-btn">
+    🎓 IELTS Speaking
+    <span class="full-speaking-sub">Все 3 части подряд</span>
+  </button>
+
+  <button class="btn btn-secondary menu-parts-btn" id="parts-btn">
+    📚 Отдельные части
+  </button>
+
+  <button class="stats-btn" id="stats-btn">📊 Моя статистика</button>
+`);
+
+// ── Screen: parts_menu ────────────────────────────────────
+
+registerScreen("parts_menu", () => `
+  <div class="screen-header">
+    <button class="back-btn" id="back-btn">‹</button>
+    <span class="screen-title">Части экзамена</span>
+  </div>
+
   ${[1, 2, 3].map(p => `
   <button class="part-card" data-part="${p}">
     <span class="part-card-icon">${PART_ICONS[p]}</span>
@@ -172,12 +207,6 @@ registerScreen("menu", () => `
     </div>
     <span class="part-card-arrow">›</span>
   </button>`).join("")}
-
-  <button class="full-speaking-btn" id="full-speaking-btn">
-    🎓 Full Speaking — все 3 части
-  </button>
-
-  <button class="stats-btn" id="stats-btn">📊 My Statistics</button>
 `);
 
 // ── Screen: topic_selection ──────────────────────────────
@@ -421,6 +450,25 @@ registerScreen("stats", () => `
 const WIRE = {
 
   menu(el) {
+    el.querySelector("#full-speaking-btn").addEventListener("click", () => {
+      state.fullMode = true;
+      state.fullResults = [];
+      state.part = 1;
+      state.currentQ = 0;
+      state.audioBlobs = [];
+      state.prevScreen = "menu";
+      loadTopicScreen();
+    });
+
+    el.querySelector("#parts-btn").addEventListener("click", () => {
+      showScreen("parts_menu");
+    });
+
+    el.querySelector("#stats-btn").addEventListener("click", () => showScreen("stats"));
+  },
+
+  parts_menu(el) {
+    el.querySelector("#back-btn").addEventListener("click", () => showScreen("menu"));
     el.querySelectorAll(".part-card").forEach((btn) => {
       btn.addEventListener("click", () => {
         state.fullMode = false;
@@ -428,27 +476,19 @@ const WIRE = {
         state.part = parseInt(btn.dataset.part);
         state.currentQ = 0;
         state.audioBlobs = [];
+        state.prevScreen = "parts_menu";
         loadTopicScreen();
       });
     });
-
-    el.querySelector("#full-speaking-btn").addEventListener("click", () => {
-      state.fullMode = true;
-      state.fullResults = [];
-      state.part = 1;
-      state.currentQ = 0;
-      state.audioBlobs = [];
-      loadTopicScreen();
-    });
-
-    el.querySelector("#stats-btn").addEventListener("click", () => showScreen("stats"));
   },
 
   topic_selection(el) {
     el.querySelector("#back-btn").addEventListener("click", () => {
+      const target = state.prevScreen || "menu";
+      state.prevScreen = null;
       state.fullMode = false;
       state.fullResults = [];
-      showScreen("menu");
+      showScreen(target);
     });
     loadTopicData(el);
   },

@@ -14,6 +14,7 @@ from keyboards import (
     PART2_BTN,
     PART3_BTN,
     STATS_BTN,
+    WEBAPP_BTN,
     interrupt_keyboard,
     main_menu_keyboard,
     results_keyboard,
@@ -25,15 +26,20 @@ from states import InterruptAction, ResultAction, TopicAction
 # ── main_menu_keyboard ───────────────────────────────────
 
 class TestMainMenuKeyboard:
-    def test_regular_user_has_5_rows(self):
-        # 4 standard rows + 1 Web App row
-        kb = main_menu_keyboard(is_admin=False)
-        assert len(kb.keyboard) == 5
+    # TEXT INTERFACE DISABLED: keyboard now shows only Web App button (+ Admin for admins).
+    # RESTORE: change expected counts back to 5 (regular) and 6 (admin) when re-enabling text UI.
 
-    def test_admin_user_has_6_rows(self):
-        # 4 standard + 1 Web App + 1 Admin
+    def test_regular_user_has_1_row(self):
+        # Only Web App row shown while text interface is disabled.
+        # RESTORE: assert len(kb.keyboard) == 5
+        kb = main_menu_keyboard(is_admin=False)
+        assert len(kb.keyboard) == 1
+
+    def test_admin_user_has_2_rows(self):
+        # Web App + Admin rows while text interface is disabled.
+        # RESTORE: assert len(kb.keyboard) == 6
         kb = main_menu_keyboard(is_admin=True)
-        assert len(kb.keyboard) == 6
+        assert len(kb.keyboard) == 2
 
     def test_admin_row_contains_admin_button(self):
         kb = main_menu_keyboard(is_admin=True)
@@ -46,17 +52,26 @@ class TestMainMenuKeyboard:
         all_texts = [btn.text for row in kb.keyboard for btn in row]
         assert ADMIN_BTN not in all_texts
 
-    def test_all_part_buttons_present(self):
+    def test_part_buttons_not_in_keyboard_while_disabled(self):
+        # TEXT INTERFACE DISABLED — part buttons are commented out of the keyboard.
+        # RESTORE: assert PART1_BTN in all_texts, etc.
         kb = main_menu_keyboard()
         all_texts = [btn.text for row in kb.keyboard for btn in row]
-        assert PART1_BTN in all_texts
-        assert PART2_BTN in all_texts
-        assert PART3_BTN in all_texts
+        assert PART1_BTN not in all_texts
+        assert PART2_BTN not in all_texts
+        assert PART3_BTN not in all_texts
 
-    def test_stats_button_present(self):
+    def test_stats_button_not_in_keyboard_while_disabled(self):
+        # TEXT INTERFACE DISABLED — stats button is commented out.
+        # RESTORE: assert STATS_BTN in all_texts
         kb = main_menu_keyboard()
         all_texts = [btn.text for row in kb.keyboard for btn in row]
-        assert STATS_BTN in all_texts
+        assert STATS_BTN not in all_texts
+
+    def test_webapp_button_is_present(self):
+        kb = main_menu_keyboard()
+        all_texts = [btn.text for row in kb.keyboard for btn in row]
+        assert WEBAPP_BTN in all_texts
 
     def test_resize_keyboard_is_true(self):
         kb = main_menu_keyboard()

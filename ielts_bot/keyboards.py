@@ -21,11 +21,13 @@ _WEBAPP_URL = os.getenv("WEBAPP_URL", "https://gafrustam.ru/ielts/")
 
 
 def main_menu_keyboard(is_admin: bool = False) -> ReplyKeyboardMarkup:
+    # TEXT INTERFACE DISABLED — only Web App button shown.
+    # To restore full keyboard, uncomment the rows below.
     keyboard = [
-        [KeyboardButton(text=PART1_BTN)],
-        [KeyboardButton(text=PART2_BTN)],
-        [KeyboardButton(text=PART3_BTN)],
-        [KeyboardButton(text=STATS_BTN)],
+        # [KeyboardButton(text=PART1_BTN)],   # RESTORE: Part 1
+        # [KeyboardButton(text=PART2_BTN)],   # RESTORE: Part 2
+        # [KeyboardButton(text=PART3_BTN)],   # RESTORE: Part 3
+        # [KeyboardButton(text=STATS_BTN)],   # RESTORE: Stats
         [KeyboardButton(text=WEBAPP_BTN, web_app=WebAppInfo(url=_WEBAPP_URL))],
     ]
     if is_admin:

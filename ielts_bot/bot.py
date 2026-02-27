@@ -182,12 +182,15 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
         "cmd_start: user_id=%d username=%s is_admin=%s admin_ids=%s",
         user.id, user.username, is_adm, _admin_ids,
     )
+    # TEXT INTERFACE DISABLED: showing compact welcome with Web App button only.
+    # RESTORE: replace with WELCOME_TEXT and re-enable state below.
     await message.answer(
-        WELCOME_TEXT,
+        "🎓 <b>IELTS Speaking Practice</b>\n\n"
+        "Нажми кнопку <b>Web App</b> ниже, чтобы открыть тренажёр.",
         parse_mode=ParseMode.HTML,
         reply_markup=main_menu_keyboard(is_admin=is_adm),
     )
-    await state.set_state(SpeakingStates.choosing_part)
+    # RESTORE: await state.set_state(SpeakingStates.choosing_part)
 
 
 # ── /help ────────────────────────────────────────────────
