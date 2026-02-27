@@ -1,7 +1,8 @@
 /**
  * app.js — IELTS Speaking Practice SPA state machine
  *
- * States: menu → topic_selection → [prep_timer] → recording → assessing → results → (stats)
+ * States: menu → topic_selection → [prep_timer] → recording → assessing → results
+ *         menu → topic_selection → ... → (full mode) → full_results
  */
 
 // ── Telegram Web App detection ───────────────────────────
@@ -11,7 +12,6 @@ const TgApp = window.Telegram?.WebApp || null;
 if (TgApp) {
   TgApp.ready();
   TgApp.expand();
-  // Apply Telegram theme CSS variables
   const tp = TgApp.themeParams || {};
   const root = document.documentElement;
   const map = {
@@ -53,8 +53,11 @@ const state = {
   currentQ: 0,
   audioBlobs: [],
   result: null,
-  prepTimer: null,     // interval handle
+  prepTimer: null,
   prepSeconds: 60,
+  // Full Speaking mode
+  fullMode: false,     // true when practicing all 3 parts in sequence
+  fullResults: [],     // [part1Result, part2Result, part3Result]
 };
 
 const recorder = new AudioRecorder("waveform-canvas");
@@ -69,7 +72,6 @@ function registerScreen(id, htmlFn) {
 
 function showScreen(id) {
   const app = document.getElementById("app");
-  // Remove existing dynamic screens
   app.querySelectorAll(".screen:not(#loading-screen)").forEach((el) => el.remove());
 
   state.screen = id;
@@ -85,10 +87,8 @@ function showScreen(id) {
 
   document.getElementById("loading-screen").classList.remove("active");
 
-  // Wire events after render
   if (WIRE[id]) WIRE[id](wrapper);
 
-  // Telegram back button
   if (TgApp) {
     if (id === "menu") {
       TgApp.BackButton.hide();
@@ -101,7 +101,6 @@ function showScreen(id) {
 
 async function navigateBack(currentId) {
   if (currentId === "recording") {
-    // Stop any active recording before leaving
     if (recorder._mediaRecorder?.state === "recording") {
       await recorder.stop().catch(() => {});
       recorder.release();
@@ -115,10 +114,17 @@ async function navigateBack(currentId) {
     topic_selection: "menu",
     prep_timer: "topic_selection",
     results: "menu",
+    full_results: "menu",
     stats: "menu",
   };
   const target = backMap[currentId];
-  if (target) showScreen(target);
+  if (target) {
+    if (currentId === "topic_selection" || target === "menu") {
+      state.fullMode = false;
+      state.fullResults = [];
+    }
+    showScreen(target);
+  }
 }
 
 // ── Toast notification ───────────────────────────────────
@@ -147,6 +153,9 @@ const PART_HINTS  = {
   3: "Aim for <b>30–60 seconds</b> per answer.",
 };
 
+// Auto-stop limits (seconds) per part per question
+const AUTO_STOP_SECS = { 1: 45, 2: 125, 3: 90 };
+
 // ── Screen: menu ─────────────────────────────────────────
 
 registerScreen("menu", () => `
@@ -164,6 +173,10 @@ registerScreen("menu", () => `
     <span class="part-card-arrow">›</span>
   </button>`).join("")}
 
+  <button class="full-speaking-btn" id="full-speaking-btn">
+    🎓 Full Speaking — все 3 части
+  </button>
+
   <button class="stats-btn" id="stats-btn">📊 My Statistics</button>
 `);
 
@@ -172,8 +185,16 @@ registerScreen("menu", () => `
 registerScreen("topic_selection", () => `
   <div class="screen-header">
     <button class="back-btn" id="back-btn">‹</button>
-    <span class="screen-title">${PART_NAMES[state.part]}</span>
+    <span class="screen-title">${state.fullMode ? `Full · ${PART_NAMES[state.part]}` : PART_NAMES[state.part]}</span>
   </div>
+
+  ${state.fullMode ? `
+  <div class="full-progress-bar">
+    ${[1, 2, 3].map(p => `
+    <div class="full-progress-step ${p < state.part ? 'done' : p === state.part ? 'active' : ''}">
+      <span>${PART_ICONS[p]}</span>
+    </div>`).join("")}
+  </div>` : ""}
 
   <div id="topic-area">
     <div class="loading-spinner" style="margin:40px auto"></div>
@@ -218,6 +239,8 @@ registerScreen("recording", () => {
     ? `<div class="cue-card">${escapeHtml(state.cueCard)}</div>`
     : `<div class="question-bubble">${escapeHtml(state.questions[idx] || "")}</div>`;
 
+  const maxSecs = AUTO_STOP_SECS[state.part] || 60;
+
   return `
   <div class="screen-header">
     <button class="back-btn" id="back-btn">‹</button>
@@ -236,6 +259,7 @@ registerScreen("recording", () => {
     </div>
     <div class="record-timer" id="record-timer">0:00</div>
     <div class="record-hint">${PART_HINTS[state.part]}</div>
+    <div class="record-limit" id="record-limit" style="display:none">⏱ Max: ${formatTime(maxSecs)}</div>
   </div>
 
   <div class="spacer"></div>
@@ -249,7 +273,7 @@ registerScreen("recording", () => {
 registerScreen("assessing", () => `
   <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;text-align:center">
     <div style="font-size:32px">🎧</div>
-    <div style="font-size:18px;font-weight:600">Analysing…</div>
+    <div style="font-size:18px;font-weight:600">Analysing${state.fullMode ? ` Part ${state.part}` : ""}…</div>
     <div class="assessing-dots">
       <div class="assessing-dot"></div>
       <div class="assessing-dot"></div>
@@ -268,17 +292,16 @@ registerScreen("results", () => {
   const r = state.result || {};
   const band = r.overall_band ?? "—";
   const criteria = [
-    { key: "fluency_coherence",     label: "Fluency & Coherence" },
-    { key: "lexical_resource",      label: "Lexical Resource" },
-    { key: "grammatical_range",     label: "Grammar & Accuracy" },
-    { key: "pronunciation",         label: "Pronunciation" },
+    { key: "fluency_coherence",  label: "Fluency & Coherence" },
+    { key: "lexical_resource",   label: "Lexical Resource" },
+    { key: "grammatical_range",  label: "Grammar & Accuracy" },
+    { key: "pronunciation",      label: "Pronunciation" },
   ];
 
   const criteriaHtml = criteria.map(({ key, label }) => {
     const score = r[key] ?? 0;
     const pct   = (score / 9) * 100;
-    const feedbackKey = key + "_feedback";
-    const feedback = r[feedbackKey] || r.feedback?.[key] || "";
+    const feedback = r[key + "_feedback"] || r.feedback?.[key] || "";
     return `
     <div class="criterion">
       <div class="criterion-header">
@@ -319,6 +342,68 @@ registerScreen("results", () => {
 `;
 });
 
+// ── Screen: full_results ─────────────────────────────────
+
+registerScreen("full_results", () => {
+  const criteria = [
+    { key: "fluency_coherence",  label: "Fluency" },
+    { key: "lexical_resource",   label: "Lexical" },
+    { key: "grammatical_range",  label: "Grammar" },
+    { key: "pronunciation",      label: "Pronunciation" },
+  ];
+
+  const panels = [1, 2, 3].map(p => {
+    const r = state.fullResults[p - 1] || {};
+    const band = r.overall_band ?? "—";
+    const barsHtml = criteria.map(({ key, label }) => {
+      const score = r[key] ?? 0;
+      const pct = (score / 9) * 100;
+      return `
+      <div class="criterion criterion-compact">
+        <div class="criterion-header">
+          <span class="criterion-name">${label}</span>
+          <span class="criterion-score">${score}</span>
+        </div>
+        <div class="criterion-bar">
+          <div class="criterion-bar-fill" style="width:${pct}%"></div>
+        </div>
+      </div>`;
+    }).join("");
+
+    return `
+    <div class="full-result-panel">
+      <div class="full-result-header">
+        <span class="full-result-part">${PART_ICONS[p]} ${PART_NAMES[p]}</span>
+        <span class="full-result-band">Band ${band}</span>
+      </div>
+      <div class="full-result-criteria">${barsHtml}</div>
+    </div>`;
+  }).join("");
+
+  const bands = state.fullResults.map(r => r?.overall_band).filter(b => typeof b === "number");
+  const avgBand = bands.length ? (bands.reduce((a, b) => a + b, 0) / bands.length).toFixed(1) : "—";
+
+  return `
+  <div class="screen-header">
+    <span class="screen-title">🏆 Full Speaking Results</span>
+  </div>
+
+  <div class="band-badge">
+    <div class="band-number">~${avgBand}</div>
+    <div class="band-label">Average across all 3 parts</div>
+  </div>
+
+  ${panels}
+
+  <div class="spacer"></div>
+
+  <div class="btn-row mt-auto">
+    <button class="btn btn-secondary" id="retry-full-btn">🔄 Practice Again</button>
+    <button class="btn btn-primary"   id="menu-btn">🏠 Menu</button>
+  </div>
+`;
+});
+
 // ── Screen: stats ────────────────────────────────────────
 
 registerScreen("stats", () => `
@@ -338,17 +423,33 @@ const WIRE = {
   menu(el) {
     el.querySelectorAll(".part-card").forEach((btn) => {
       btn.addEventListener("click", () => {
+        state.fullMode = false;
+        state.fullResults = [];
         state.part = parseInt(btn.dataset.part);
         state.currentQ = 0;
         state.audioBlobs = [];
         loadTopicScreen();
       });
     });
+
+    el.querySelector("#full-speaking-btn").addEventListener("click", () => {
+      state.fullMode = true;
+      state.fullResults = [];
+      state.part = 1;
+      state.currentQ = 0;
+      state.audioBlobs = [];
+      loadTopicScreen();
+    });
+
     el.querySelector("#stats-btn").addEventListener("click", () => showScreen("stats"));
   },
 
   topic_selection(el) {
-    el.querySelector("#back-btn").addEventListener("click", () => showScreen("menu"));
+    el.querySelector("#back-btn").addEventListener("click", () => {
+      state.fullMode = false;
+      state.fullResults = [];
+      showScreen("menu");
+    });
     loadTopicData(el);
   },
 
@@ -370,10 +471,17 @@ const WIRE = {
     const ring     = el.querySelector("#record-ring");
     const stopBtn  = el.querySelector("#stop-btn");
     const timerEl  = el.querySelector("#record-timer");
+    const limitEl  = el.querySelector("#record-limit");
     const backBtn  = el.querySelector("#back-btn");
     let isRecording = false;
+    let autoStopTimer = null;
+
+    function clearAutoStop() {
+      if (autoStopTimer) { clearTimeout(autoStopTimer); autoStopTimer = null; }
+    }
 
     backBtn.addEventListener("click", async () => {
+      clearAutoStop();
       if (isRecording) {
         isRecording = false;
         await recorder.stop().catch(() => {});
@@ -386,7 +494,6 @@ const WIRE = {
 
     btn.addEventListener("click", async () => {
       if (!isRecording) {
-        // Start recording
         try {
           await recorder.start(timerEl);
         } catch (err) {
@@ -398,16 +505,31 @@ const WIRE = {
         btn.textContent = "⏹";
         ring.classList.add("pulsing");
         stopBtn.style.display = "flex";
+        if (limitEl) limitEl.style.display = "block";
+
+        // Auto-stop when time limit reached
+        const maxSecs = AUTO_STOP_SECS[state.part] || 60;
+        autoStopTimer = setTimeout(() => {
+          if (isRecording) {
+            showToast("⏱ Time limit reached — submitting…");
+            doStopAndSubmit();
+          }
+        }, maxSecs * 1000);
       } else {
+        clearAutoStop();
         await doStopAndSubmit();
       }
     });
 
     stopBtn.addEventListener("click", async () => {
-      if (isRecording) await doStopAndSubmit();
+      if (isRecording) {
+        clearAutoStop();
+        await doStopAndSubmit();
+      }
     });
 
     async function doStopAndSubmit() {
+      isRecording = false;
       btn.disabled = true;
       stopBtn.disabled = true;
       ring.classList.remove("pulsing");
@@ -415,17 +537,16 @@ const WIRE = {
       const blob = await recorder.stop();
       state.audioBlobs[state.currentQ] = blob;
 
-      // Upload
       try {
         await submitAnswer(SESSION_TOKEN, state.currentQ, blob);
       } catch (err) {
         showToast("Upload error: " + err.message);
         btn.disabled = false;
         stopBtn.disabled = false;
+        isRecording = true;
         return;
       }
 
-      // Advance
       const total = state.part === 2 ? 1 : state.questions.length;
       if (state.part !== 2 && state.currentQ + 1 < total) {
         state.currentQ++;
@@ -437,9 +558,7 @@ const WIRE = {
     }
   },
 
-  assessing() {
-    // No interactive elements — assessment runs from recording wire
-  },
+  assessing() {},
 
   results(el) {
     el.querySelectorAll(".feedback-header").forEach((hdr) => {
@@ -462,7 +581,27 @@ const WIRE = {
       }
     });
 
-    el.querySelector("#menu-btn").addEventListener("click", () => showScreen("menu"));
+    el.querySelector("#menu-btn").addEventListener("click", () => {
+      state.fullMode = false;
+      state.fullResults = [];
+      showScreen("menu");
+    });
+  },
+
+  full_results(el) {
+    el.querySelector("#retry-full-btn").addEventListener("click", () => {
+      state.fullMode = true;
+      state.fullResults = [];
+      state.part = 1;
+      state.currentQ = 0;
+      state.audioBlobs = [];
+      loadTopicScreen();
+    });
+    el.querySelector("#menu-btn").addEventListener("click", () => {
+      state.fullMode = false;
+      state.fullResults = [];
+      showScreen("menu");
+    });
   },
 
   async stats(el) {
@@ -501,12 +640,14 @@ async function loadTopicData(screenEl) {
   }
 
   function renderTopicCard(container) {
-    const questionsHtml = state.part !== 2
-      ? `<ul class="topic-questions">${state.questions.map((q, i) => `<li>${i+1}. ${escapeHtml(q)}</li>`).join("")}</ul>`
-      : `<div class="cue-card">${escapeHtml(state.cueCard)}</div>`;
+    // For Parts 1 & 3: hide questions until recording starts.
+    // The cue card for Part 2 is always visible (needed for 1-min preparation).
+    const questionsHtml = state.part === 2
+      ? `<div class="cue-card">${escapeHtml(state.cueCard)}</div>`
+      : "";
 
     const meta = state.part !== 2
-      ? `${state.questions.length} question${state.questions.length !== 1 ? "s" : ""}`
+      ? `${state.questions.length} question${state.questions.length !== 1 ? "s" : ""} · revealed when you start`
       : "2-min monologue";
 
     container.innerHTML = `
@@ -560,7 +701,6 @@ function startPrepTimer(screenEl) {
     update();
     if (remaining <= 0) {
       clearInterval(state.prepTimer);
-      // Auto-start recording
       state.currentQ = 0;
       showScreen("recording");
     }
@@ -572,11 +712,41 @@ function startPrepTimer(screenEl) {
 async function runAssessment() {
   try {
     const result = await requestAssessment(SESSION_TOKEN, INIT_DATA);
-    state.result = result;
-    showScreen("results");
+
+    if (state.fullMode) {
+      state.fullResults[state.part - 1] = result;
+      if (state.part < 3) {
+        const nextPart = state.part + 1;
+        state.part = nextPart;
+        state.currentQ = 0;
+        state.audioBlobs = [];
+        showToast(`✅ Part ${nextPart - 1} done! Now Part ${nextPart}…`, 2500);
+        setTimeout(() => loadTopicScreen(), 1200);
+      } else {
+        showScreen("full_results");
+      }
+    } else {
+      state.result = result;
+      showScreen("results");
+    }
   } catch (err) {
-    showToast("Assessment failed: " + err.message, 5000);
-    showScreen("results");
+    if (state.fullMode) {
+      state.fullResults[state.part - 1] = {};
+      showToast("Assessment failed: " + err.message, 4000);
+      if (state.part < 3) {
+        const nextPart = state.part + 1;
+        state.part = nextPart;
+        state.currentQ = 0;
+        state.audioBlobs = [];
+        setTimeout(() => loadTopicScreen(), 1500);
+      } else {
+        showScreen("full_results");
+      }
+    } else {
+      showToast("Assessment failed: " + err.message, 5000);
+      state.result = {};
+      showScreen("results");
+    }
   }
 }
 
@@ -641,6 +811,12 @@ function bandLabel(band) {
   if (band >= 5.5) return "B1 — Modest";
   if (band >= 4.5) return "A2 — Limited";
   return "A1 — Beginner";
+}
+
+function formatTime(secs) {
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
 // ── Boot ─────────────────────────────────────────────────
