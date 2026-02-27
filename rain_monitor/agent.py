@@ -16,8 +16,18 @@ import httpx
 from openai import OpenAI
 
 # ── Config ────────────────────────────────────────────────────────────────────
-OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
-BOT_TOKEN      = os.environ["RAIN_BOT_TOKEN"]
+OPENAI_API_KEY    = os.environ.get("OPENAI_API_KEY", "")
+GOOGLE_AI_API_KEY = os.environ.get("GOOGLE_AI_API_KEY", "")
+BOT_TOKEN         = os.environ["RAIN_BOT_TOKEN"]
+
+_GOOGLE_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+AI_MODEL = "gemini-2.0-flash" if GOOGLE_AI_API_KEY else "gpt-4o-mini"
+
+
+def _get_ai_client() -> OpenAI:
+    if GOOGLE_AI_API_KEY:
+        return OpenAI(api_key=GOOGLE_AI_API_KEY, base_url=_GOOGLE_BASE_URL)
+    return OpenAI(api_key=OPENAI_API_KEY)
 CHAT_ID        = os.environ["RAIN_CHAT_ID"]
 STATE_FILE     = Path(__file__).parent / "rain_state.json"
 
@@ -118,8 +128,8 @@ def wcode_to_ru(code: int) -> str:
 
 
 def compose_alert(slot: dict) -> str:
-    """Use OpenAI to compose a short friendly Russian alert."""
-    client = OpenAI(api_key=OPENAI_API_KEY)
+    """Use AI to compose a short friendly Russian alert."""
+    client = _get_ai_client()
 
     weather_type = wcode_to_ru(slot["wcode"])
     is_storm     = slot["wcode"] >= 95
@@ -133,7 +143,7 @@ def compose_alert(slot: dict) -> str:
     )
 
     resp = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=AI_MODEL,
         messages=[{"role": "user", "content": prompt}],
         max_tokens=120,
         temperature=0.7,
@@ -178,7 +188,7 @@ def main() -> None:
         print(f"  → Alert suppressed (last sent: {state.get('last_alert_utc')})")
         return
 
-    print("  → Composing alert with OpenAI...")
+    print("  → Composing alert with AI...")
     message = compose_alert(rain_slot)
     print(f"  → Message: {message[:100]}")
 

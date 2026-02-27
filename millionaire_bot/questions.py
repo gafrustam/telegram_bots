@@ -1,16 +1,28 @@
-"""OpenAI-powered question generation, phone-a-friend, and ask-the-audience."""
+"""AI-powered question generation, phone-a-friend, and ask-the-audience."""
 
 import json
 import logging
+import os
 import random
 from openai import AsyncOpenAI
 
-from config import OPENAI_API_KEY, OPENAI_MODEL, get_difficulty
+from config import OPENAI_API_KEY, OPENAI_MODEL, GOOGLE_AI_API_KEY, AI_PROVIDER, get_difficulty
 from database import get_recent_questions, save_question
 
 log = logging.getLogger(__name__)
 
-client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+_GOOGLE_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+_GOOGLE_MODEL = os.getenv("GOOGLE_TEXT_MODEL", "gemini-2.0-flash")
+
+
+def _get_client() -> AsyncOpenAI:
+    if AI_PROVIDER.lower() == "google":
+        return AsyncOpenAI(api_key=GOOGLE_AI_API_KEY, base_url=_GOOGLE_BASE_URL)
+    return AsyncOpenAI(api_key=OPENAI_API_KEY)
+
+
+def _get_model() -> str:
+    return _GOOGLE_MODEL if AI_PROVIDER.lower() == "google" else OPENAI_MODEL
 
 # ── Types ─────────────────────────────────────────────────────────────────────
 type QuestionData = dict  # {question, options: {A,B,C,D}, correct}
@@ -106,8 +118,8 @@ async def _generate_one(
         '{"question": "...", "options": {"A": "...", "B": "...", "C": "...", "D": "..."}, "correct": "A"}'
     )
 
-    resp = await client.chat.completions.create(
-        model=OPENAI_MODEL,
+    resp = await _get_client().chat.completions.create(
+        model=_get_model(),
         messages=[{"role": "user", "content": prompt}],
         response_format={"type": "json_object"},
         temperature=0.9,
@@ -195,8 +207,8 @@ async def phone_a_friend(
         "• Не упоминай, что ты ИИ."
     )
 
-    resp = await client.chat.completions.create(
-        model=OPENAI_MODEL,
+    resp = await _get_client().chat.completions.create(
+        model=_get_model(),
         messages=[{"role": "user", "content": prompt}],
         temperature=0.75,
         max_tokens=180,
@@ -229,8 +241,8 @@ async def ask_audience(
         '{"A": 45, "B": 12, "C": 35, "D": 8}'
     )
 
-    resp = await client.chat.completions.create(
-        model=OPENAI_MODEL,
+    resp = await _get_client().chat.completions.create(
+        model=_get_model(),
         messages=[{"role": "user", "content": prompt}],
         response_format={"type": "json_object"},
         temperature=0.6,

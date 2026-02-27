@@ -101,8 +101,9 @@ def monte_carlo_strength(hole: List[str], community: List[str],
 # ──────────────────────────────────────────────────────────────────────────────
 
 class AIPlayer:
-    def __init__(self, openai_api_key: str):
-        self.client = AsyncOpenAI(api_key=openai_api_key)
+    def __init__(self, openai_api_key: str, base_url: str | None = None):
+        self.client = AsyncOpenAI(api_key=openai_api_key, base_url=base_url)
+        self._model = "gemini-2.0-flash" if base_url else "gpt-4o-mini"
         self.decisions_made = 0
         self.action_history: List[str] = []   # last ~20 actions for pattern tracking
         self._gpt_every = random.randint(5, 9)  # vary GPT call frequency
@@ -288,7 +289,7 @@ class AIPlayer:
         )
 
         resp = await self.client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=self._model,
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
             max_tokens=80,

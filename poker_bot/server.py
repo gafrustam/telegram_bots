@@ -21,6 +21,8 @@ from database import init_db, save_game, load_game, update_stats
 load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+GOOGLE_AI_API_KEY = os.getenv("GOOGLE_AI_API_KEY", "")
+_GOOGLE_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 STATIC_DIR = Path(__file__).parent / "static"
 
 app = FastAPI(title="Poker Mini App")
@@ -129,7 +131,7 @@ async def _ai_turn(user_id: str, ws: WebSocket, game: PokerGame):
     """Run AI decision loop until it's the player's turn or hand is over."""
     ai = _ai.get(user_id)
     if not ai:
-        ai = AIPlayer(OPENAI_API_KEY)
+        ai = AIPlayer(GOOGLE_AI_API_KEY or OPENAI_API_KEY, base_url=_GOOGLE_BASE_URL if GOOGLE_AI_API_KEY else None)
         _ai[user_id] = ai
 
     # Notify frontend
@@ -171,7 +173,7 @@ async def _ai_turn(user_id: str, ws: WebSocket, game: PokerGame):
 def _new_game(user_id: str) -> PokerGame:
     game = PokerGame(starting_stack=3000, small_blind=50)
     _games[user_id] = game
-    _ai[user_id] = AIPlayer(OPENAI_API_KEY)
+    _ai[user_id] = AIPlayer(GOOGLE_AI_API_KEY or OPENAI_API_KEY, base_url=_GOOGLE_BASE_URL if GOOGLE_AI_API_KEY else None)
     return game
 
 
@@ -184,7 +186,7 @@ async def _get_or_create_game(user_id: str) -> PokerGame:
         try:
             game = PokerGame.from_dict(saved)
             _games[user_id] = game
-            _ai[user_id] = AIPlayer(OPENAI_API_KEY)
+            _ai[user_id] = AIPlayer(GOOGLE_AI_API_KEY or OPENAI_API_KEY, base_url=_GOOGLE_BASE_URL if GOOGLE_AI_API_KEY else None)
             return game
         except Exception:
             pass

@@ -1,17 +1,30 @@
 """
-OpenAI-based task generation, theory generation, and answer evaluation.
+AI-based task generation, theory generation, and answer evaluation.
 """
 
 import json
 import logging
+import os
 import re
 
 from openai import AsyncOpenAI
 
-from config import OPENAI_API_KEY, OPENAI_MODEL
+from config import OPENAI_API_KEY, OPENAI_MODEL, GOOGLE_AI_API_KEY, AI_PROVIDER
 
 logger = logging.getLogger(__name__)
-client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+
+_GOOGLE_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+_GOOGLE_MODEL = os.getenv("GOOGLE_TEXT_MODEL", "gemini-2.0-flash")
+
+
+def _get_client() -> AsyncOpenAI:
+    if AI_PROVIDER.lower() == "google":
+        return AsyncOpenAI(api_key=GOOGLE_AI_API_KEY, base_url=_GOOGLE_BASE_URL)
+    return AsyncOpenAI(api_key=OPENAI_API_KEY)
+
+
+def _get_model() -> str:
+    return _GOOGLE_MODEL if AI_PROVIDER.lower() == "google" else OPENAI_MODEL
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -30,8 +43,8 @@ def _extract_json(text: str) -> dict:
 
 
 async def _chat(system: str, user: str, temperature: float = 0.8) -> str:
-    response = await client.chat.completions.create(
-        model=OPENAI_MODEL,
+    response = await _get_client().chat.completions.create(
+        model=_get_model(),
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": user},
