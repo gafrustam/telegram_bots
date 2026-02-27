@@ -101,7 +101,6 @@ HELP_TEXT = (
     "<b>Команды:</b>\n"
     "  /start   — Главное меню\n"
     "  /help    — Эта справка\n"
-    "  /mystats — Моя статистика\n"
     "  /cancel  — Отменить текущую сессию"
 )
 
@@ -1108,7 +1107,6 @@ async def _set_bot_commands() -> None:
     await bot.set_my_commands([
         BotCommand(command="start",  description="Главное меню"),
         BotCommand(command="help",   description="Справка"),
-        BotCommand(command="mystats",description="Моя статистика"),
         BotCommand(command="cancel", description="Отменить текущую сессию"),
         BotCommand(command="webapp", description="Открыть веб-приложение"),
     ])
