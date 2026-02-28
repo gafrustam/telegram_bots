@@ -28,16 +28,66 @@ ADMIN_CHAT_ID  = 138468116
 
 CLAUDE_PATH = "/home/ubuntu/.local/bin/claude"
 
-# service name → working directory for Claude to run in
-SERVICES: dict[str, str] = {
-    "ielts-bot":       "/home/ubuntu/telegram_bots/ielts_bot",
-    "ielts-server":    "/home/ubuntu/telegram_bots/ielts_bot",
-    "poker-bot":       "/home/ubuntu/telegram_bots/poker_bot",
-    "poker-server":    "/home/ubuntu/telegram_bots/poker_bot",
-    "coder-bot":       "/home/ubuntu/telegram_bots/coder_bot",
-    "millionaire-bot": "/home/ubuntu/telegram_bots/millionaire_bot",
-    "vpr_bot":         "/home/ubuntu/telegram_bots/vpr_bot",
-}
+# Root directory — any service whose WorkingDirectory is under here gets monitored
+BOT_ROOT = "/home/ubuntu/telegram_bots"
+
+# Services to always exclude from monitoring (e.g. the monitor itself)
+EXCLUDED_SERVICES: set[str] = {"error-monitor"}
+
+
+def discover_services() -> dict[str, str]:
+    """
+    Auto-discover all systemd services whose WorkingDirectory is under BOT_ROOT.
+    Returns {service_name: working_directory}.
+    """
+    try:
+        # Step 1: collect names of all loaded .service units
+        r = subprocess.run(
+            ["systemctl", "list-units", "--type=service", "--state=loaded",
+             "--no-pager", "--no-legend", "--plain"],
+            capture_output=True, text=True, timeout=10,
+        )
+        names = []
+        for line in r.stdout.splitlines():
+            parts = line.split()
+            if parts and parts[0].endswith(".service"):
+                names.append(parts[0])
+
+        if not names:
+            return {}
+
+        # Step 2: batch-query WorkingDirectory for all of them at once
+        r2 = subprocess.run(
+            ["systemctl", "show", *names, "--property=Id,WorkingDirectory"],
+            capture_output=True, text=True, timeout=15,
+        )
+
+        services: dict[str, str] = {}
+        current_id = ""
+        current_wd = ""
+
+        def _flush():
+            if current_id and current_wd.startswith(BOT_ROOT) and current_id not in EXCLUDED_SERVICES:
+                services[current_id] = current_wd
+
+        for line in r2.stdout.splitlines():
+            if not line.strip():
+                _flush()
+                current_id = ""
+                current_wd = ""
+            elif line.startswith("Id="):
+                val = line.split("=", 1)[1].strip()
+                current_id = val[: -len(".service")] if val.endswith(".service") else val
+            elif line.startswith("WorkingDirectory="):
+                current_wd = line.split("=", 1)[1].strip()
+
+        _flush()  # last block has no trailing blank line
+        return services
+
+    except Exception as e:
+        # Fall back gracefully — log will appear at startup
+        print(f"[monitor] Service discovery failed: {e}", flush=True)
+        return {}
 
 # Cooldown: same error won't trigger again for this many seconds
 COOLDOWN_SEC = 300
@@ -284,16 +334,22 @@ async def watch_service(service: str, working_dir: str) -> None:
 # ── Entry point ───────────────────────────────────────────
 
 async def main() -> None:
-    logger.info("Starting error monitor. Services: %s", list(SERVICES))
+    services = discover_services()
+
+    if not services:
+        logger.error("No services discovered — check BOT_ROOT or systemd. Exiting.")
+        return
+
+    logger.info("Starting error monitor. Services: %s", list(services))
 
     await tg(
         "🟢 <b>Error monitor запущен</b>\n"
-        "Мониторю: " + ", ".join(f"<code>{s}</code>" for s in SERVICES)
+        "Мониторю: " + ", ".join(f"<code>{s}</code>" for s in services)
     )
 
     tasks = [
         asyncio.create_task(watch_service(svc, wd))
-        for svc, wd in SERVICES.items()
+        for svc, wd in services.items()
     ]
     await asyncio.gather(*tasks)
 
