@@ -166,7 +166,11 @@ def main() -> None:
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{ts}] Rain check started")
 
-    forecast = fetch_forecast()
+    try:
+        forecast = fetch_forecast()
+    except (httpx.TimeoutException, httpx.NetworkError) as exc:
+        print(f"  → Network error fetching forecast (transient): {exc}")
+        return
     print(f"  Forecast ({len(forecast)} slots):")
     for s in forecast:
         print(f"    +{s['in_hours']:4.1f}h  prob={s['prob_%']:3}%  mm={s['mm']:.1f}  wcode={s['wcode']}")

@@ -152,7 +152,7 @@ async def _assess_multi_audio_openai(
     content_parts.append({"type": "text", "text": "Now assess the overall performance across all responses above."})
 
     client = _get_openai_client()
-    model = os.getenv("OPENAI_MODEL", "gpt-4o-audio-preview")
+    model = os.getenv("OPENAI_MODEL", "gpt-audio")
     response = await client.chat.completions.create(
         model=model, modalities=["text"],
         messages=[
@@ -171,7 +171,7 @@ async def _assess_multi_audio_google(
     from google.genai import types
 
     client = genai.Client(api_key=os.getenv("GOOGLE_AI_API_KEY"))
-    model_name = os.getenv("GOOGLE_AUDIO_MODEL", "gemini-2.0-flash")
+    model_name = os.getenv("GOOGLE_AUDIO_MODEL", "gemini-2.5-flash")
 
     content_parts: list = []
     with tempfile.TemporaryDirectory() as tmp_dir:
@@ -226,7 +226,7 @@ async def _assess_part2_openai(ogg_path: str, system_prompt: str) -> dict:
         audio_b64 = _encode_mp3(mp3_path)
 
     client = _get_openai_client()
-    model = os.getenv("OPENAI_MODEL", "gpt-4o-audio-preview")
+    model = os.getenv("OPENAI_MODEL", "gpt-audio")
     response = await client.chat.completions.create(
         model=model, modalities=["text"],
         messages=[
@@ -245,7 +245,7 @@ async def _assess_part2_google(ogg_path: str, system_prompt: str) -> dict:
     from google.genai import types
 
     client = genai.Client(api_key=os.getenv("GOOGLE_AI_API_KEY"))
-    model_name = os.getenv("GOOGLE_AUDIO_MODEL", "gemini-2.0-flash")
+    model_name = os.getenv("GOOGLE_AUDIO_MODEL", "gemini-2.5-flash")
 
     max_ms = 120_000
     with tempfile.TemporaryDirectory() as tmp_dir:

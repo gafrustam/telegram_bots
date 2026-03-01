@@ -77,7 +77,7 @@ async def generate_session(
 
 async def _generate_session_openai(system_prompt: str, user_msg: str) -> dict:
     client = _get_openai_client()
-    model = os.getenv("OPENAI_TEXT_MODEL", "gpt-4o-mini")
+    model = os.getenv("OPENAI_TEXT_MODEL", "gpt-4.1-mini")
     response = await client.chat.completions.create(
         model=model,
         messages=[
@@ -94,7 +94,7 @@ async def _generate_session_google(system_prompt: str, user_msg: str) -> dict:
     from google.genai import types
 
     client = genai.Client(api_key=os.getenv("GOOGLE_AI_API_KEY"))
-    model_name = os.getenv("GOOGLE_TEXT_MODEL", "gemini-2.0-flash")
+    model_name = os.getenv("GOOGLE_TEXT_MODEL", "gemini-2.5-flash")
     response = await asyncio.to_thread(
         client.models.generate_content,
         model=model_name,

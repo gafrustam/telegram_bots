@@ -36,7 +36,7 @@ async def text_to_voice(text: str, user_id: int | None = None) -> bytes:
 
 async def _openai_text_to_voice(text: str) -> bytes:
     client = _get_openai_client()
-    model = os.getenv("TTS_MODEL", "tts-1")
+    model = os.getenv("TTS_MODEL", "gpt-4o-mini-tts")
     voice = os.getenv("TTS_VOICE", "alloy")
     response = await client.audio.speech.create(
         model=model,

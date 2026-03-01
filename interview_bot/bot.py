@@ -2,6 +2,7 @@
 Interview Prep Bot — ежедневные алгоритмические задачи для подготовки к собеседованиям.
 """
 import asyncio
+import html
 import logging
 import os
 import random
@@ -103,23 +104,23 @@ async def format_problem_text(problem: dict, prog_language: str, lang: str = "ru
     # Build text in Russian first
     examples_text = "\n".join(
         f"  <b>Пример {i+1}:</b>\n"
-        f"  Вход: <code>{ex['input']}</code>\n"
-        f"  Выход: <code>{ex['output']}</code>"
-        + (f"\n  <i>{ex['explanation']}</i>" if ex.get("explanation") else "")
+        f"  Вход: <code>{html.escape(str(ex['input']))}</code>\n"
+        f"  Выход: <code>{html.escape(str(ex['output']))}</code>"
+        + (f"\n  <i>{html.escape(str(ex['explanation']))}</i>" if ex.get("explanation") else "")
         for i, ex in enumerate(examples)
     )
-    constraints_text = "\n".join(f"  • {c}" for c in constraints)
+    constraints_text = "\n".join(f"  • {html.escape(c)}" for c in constraints)
 
     emoji = LEVEL_EMOJI.get(problem["level"], "")
     level_label = LEVELS.get(problem["level"], problem["level"])
 
     text = (
-        f"🧩 <b>{problem['title']}</b>\n"
+        f"🧩 <b>{html.escape(problem['title'])}</b>\n"
         f"{emoji} Уровень: {level_label}\n\n"
-        f"{problem['description']}\n\n"
+        f"{html.escape(problem['description'])}\n\n"
         f"<b>Примеры:</b>\n{examples_text}\n\n"
         f"<b>Ограничения:</b>\n{constraints_text}\n\n"
-        f"⌨️ Отправь своё решение на <b>{prog_language}</b> следующим сообщением."
+        f"⌨️ Отправь своё решение на <b>{html.escape(prog_language)}</b> следующим сообщением."
     )
 
     if lang == "en":
