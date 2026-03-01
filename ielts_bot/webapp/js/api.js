@@ -11,11 +11,11 @@ const API_BASE = ".";
  * @param {string} sessionToken
  * @returns {Promise<{topic: string, questions: string[], cue_card: string}>}
  */
-async function generateTopic(part, sessionToken) {
+async function generateTopic(part, sessionToken, fullMode = false) {
   const resp = await fetch(`${API_BASE}/api/topic`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ part, session_token: sessionToken }),
+    body: JSON.stringify({ part, session_token: sessionToken, full_mode: fullMode }),
   });
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({}));

@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import database
-from assessor import assess_part1, assess_part2, assess_part3, _get_duration_seconds
+from assessor import assess_part1, assess_part2, assess_part3, assess_full_test, _get_duration_seconds
 from questions import generate_session
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
@@ -51,6 +51,8 @@ class SessionData:
     audio_files: list[bytes] = field(default_factory=list)   # raw bytes
     audio_durations: list[float] = field(default_factory=list)
     created_at: float = field(default_factory=time.time)
+    full_mode: bool = False           # true when doing all 3 parts in sequence
+    parts_data: dict = field(default_factory=dict)  # {part: {topic,questions,cue_card,audio_files,audio_durations}}
 
 
 sessions: dict[str, SessionData] = {}
@@ -108,6 +110,7 @@ def _validate_telegram_init_data(init_data: str) -> dict | None:
 class TopicRequest(BaseModel):
     part: int
     session_token: str
+    full_mode: bool = False
 
 
 class AssessRequest(BaseModel):
@@ -130,8 +133,20 @@ async def api_topic(req: TopicRequest):
 
     _cleanup_old_sessions()
     session = _get_or_create_session(req.session_token)
+
+    # In full mode: save current part's data before switching to next part
+    if req.full_mode and session.part is not None and any(session.audio_files):
+        session.parts_data[session.part] = {
+            "topic": session.topic,
+            "questions": list(session.questions),
+            "cue_card": session.cue_card,
+            "audio_files": list(session.audio_files),
+            "audio_durations": list(session.audio_durations),
+        }
+
+    session.full_mode = req.full_mode
     session.part = req.part
-    # Clear previous audio
+    # Clear previous audio for new part
     session.audio_files = []
     session.audio_durations = []
 
@@ -219,48 +234,103 @@ async def api_assess(
 
     try:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            # Write audio blobs to temp files as OGG (pydub can handle webm/ogg)
-            ogg_paths = []
-            for i, audio_bytes in enumerate(session.audio_files):
-                if not audio_bytes:
-                    continue
-                ext = _detect_audio_ext(audio_bytes)
-                path = os.path.join(tmp_dir, f"response_{i}.{ext}")
-                logger.info(
-                    "assess: writing audio[%d] size=%d ext=%s session=%s",
-                    i, len(audio_bytes), ext, req.session_token[:8],
-                )
-                with open(path, "wb") as f:
-                    f.write(audio_bytes)
-                ogg_paths.append(path)
+            if session.full_mode and session.part == 3:
+                # Full test: combine all 3 parts and assess together
+                # Save current part 3 data to parts_data
+                session.parts_data[3] = {
+                    "topic": session.topic,
+                    "questions": list(session.questions),
+                    "cue_card": session.cue_card,
+                    "audio_files": list(session.audio_files),
+                    "audio_durations": list(session.audio_durations),
+                }
 
-            if not ogg_paths:
-                raise HTTPException(400, "No valid audio files")
+                def _write_part_audio(part_num: int, prefix: str) -> list[str]:
+                    pd = session.parts_data.get(part_num, {})
+                    paths = []
+                    for i, ab in enumerate(pd.get("audio_files", [])):
+                        if not ab:
+                            continue
+                        ext = _detect_audio_ext(ab)
+                        p = os.path.join(tmp_dir, f"{prefix}_{i}.{ext}")
+                        with open(p, "wb") as f:
+                            f.write(ab)
+                        paths.append(p)
+                    return paths
 
-            part = session.part
-            durations_int = [int(d) for d in session.audio_durations if d > 0]
+                p1_paths = _write_part_audio(1, "p1")
+                p2_paths = _write_part_audio(2, "p2")
+                p3_paths = _write_part_audio(3, "p3")
 
-            if part == 1:
-                result = await assess_part1(
-                    ogg_paths, session.questions[:len(ogg_paths)], session.topic,
-                    durations=durations_int or None,
-                    user_id=session.user_id,
-                )
-            elif part == 2:
-                duration = await _get_duration_safe(ogg_paths[0])
-                result = await assess_part2(
-                    ogg_paths[0], session.cue_card, duration,
+                if not p1_paths or not p2_paths or not p3_paths:
+                    raise HTTPException(400, "Missing audio for one or more parts")
+
+                p1 = session.parts_data[1]
+                p2 = session.parts_data[2]
+                p3 = session.parts_data[3]
+
+                p1_durations = [int(d) for d in p1.get("audio_durations", []) if d > 0] or None
+                p2_duration = await _get_duration_safe(p2_paths[0])
+                p3_durations = [int(d) for d in p3.get("audio_durations", []) if d > 0] or None
+
+                result = await assess_full_test(
+                    p1_ogg_paths=p1_paths,
+                    p1_questions=p1.get("questions", [])[:len(p1_paths)],
+                    p1_topic=p1.get("topic", ""),
+                    p1_durations=p1_durations,
+                    p2_ogg_path=p2_paths[0],
+                    p2_cue_card=p2.get("cue_card", ""),
+                    p2_duration=p2_duration,
+                    p3_ogg_paths=p3_paths,
+                    p3_questions=p3.get("questions", [])[:len(p3_paths)],
+                    p3_topic=p3.get("topic", ""),
+                    p3_durations=p3_durations,
                     user_id=session.user_id,
                 )
             else:
-                result = await assess_part3(
-                    ogg_paths, session.questions[:len(ogg_paths)], session.topic,
-                    durations=durations_int or None,
-                    user_id=session.user_id,
-                )
+                # Single-part assessment
+                ogg_paths = []
+                for i, audio_bytes in enumerate(session.audio_files):
+                    if not audio_bytes:
+                        continue
+                    ext = _detect_audio_ext(audio_bytes)
+                    path = os.path.join(tmp_dir, f"response_{i}.{ext}")
+                    logger.info(
+                        "assess: writing audio[%d] size=%d ext=%s session=%s",
+                        i, len(audio_bytes), ext, req.session_token[:8],
+                    )
+                    with open(path, "wb") as f:
+                        f.write(audio_bytes)
+                    ogg_paths.append(path)
 
-        # Save to DB if available
-        if database.is_available() and session.user_id:
+                if not ogg_paths:
+                    raise HTTPException(400, "No valid audio files")
+
+                part = session.part
+                durations_int = [int(d) for d in session.audio_durations if d > 0]
+
+                if part == 1:
+                    result = await assess_part1(
+                        ogg_paths, session.questions[:len(ogg_paths)], session.topic,
+                        durations=durations_int or None,
+                        user_id=session.user_id,
+                    )
+                elif part == 2:
+                    duration = await _get_duration_safe(ogg_paths[0])
+                    result = await assess_part2(
+                        ogg_paths[0], session.cue_card, duration,
+                        user_id=session.user_id,
+                    )
+                else:
+                    result = await assess_part3(
+                        ogg_paths, session.questions[:len(ogg_paths)], session.topic,
+                        durations=durations_int or None,
+                        user_id=session.user_id,
+                    )
+
+        # Save to DB if available (single part only; full test DB save omitted for now)
+        if not session.full_mode and database.is_available() and session.user_id:
+            part = session.part
             db_session_id = await database.create_session(
                 user_id=session.user_id,
                 part=part,

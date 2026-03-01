@@ -58,7 +58,8 @@ const state = {
   prevScreen: null,    // screen to return to from topic_selection
   // Full Speaking mode
   fullMode: false,     // true when practicing all 3 parts in sequence
-  fullResults: [],     // [part1Result, part2Result, part3Result]
+  fullResults: [],     // legacy, kept for compatibility
+  fullResult: null,    // single combined assessment result for full test
 };
 
 const recorder = new AudioRecorder("waveform-canvas");
@@ -327,16 +328,22 @@ registerScreen("results", () => {
   const r = state.result || {};
   const band = r.overall_band ?? "—";
   const criteria = [
-    { key: "fluency_coherence",  label: "Fluency & Coherence" },
-    { key: "lexical_resource",   label: "Lexical Resource" },
-    { key: "grammatical_range",  label: "Grammar & Accuracy" },
-    { key: "pronunciation",      label: "Pronunciation" },
+    { key: "fluency_coherence",         label: "Fluency & Coherence" },
+    { key: "lexical_resource",          label: "Lexical Resource" },
+    { key: "grammatical_range_accuracy", label: "Grammar & Accuracy" },
+    { key: "pronunciation",             label: "Pronunciation" },
   ];
 
   const criteriaHtml = criteria.map(({ key, label }) => {
-    const score = r[key] ?? 0;
+    const criterionObj = (r[key] && typeof r[key] === "object") ? r[key] : {};
+    const score = criterionObj.band ?? 0;
     const pct   = (score / 9) * 100;
-    const feedback = r[key + "_feedback"] || r.feedback?.[key] || "";
+    const explanation = criterionObj.explanation || "";
+    const examples = criterionObj.examples || [];
+    const feedbackHtml = [
+      explanation ? `<p class="fb-explanation">${escapeHtml(explanation)}</p>` : "",
+      examples.map(ex => `<div class="fb-example">${escapeHtml(ex)}</div>`).join(""),
+    ].join("");
     return `
     <div class="criterion">
       <div class="criterion-header">
@@ -352,7 +359,7 @@ registerScreen("results", () => {
         <span>▼ ${label} feedback</span>
         <span class="chevron">▾</span>
       </div>
-      <div class="feedback-body" id="fb-${key}">${escapeHtml(feedback)}</div>
+      <div class="feedback-body" id="fb-${key}">${feedbackHtml}</div>
     </div>`;
   }).join("");
 
@@ -380,43 +387,43 @@ registerScreen("results", () => {
 // ── Screen: full_results ─────────────────────────────────
 
 registerScreen("full_results", () => {
+  const r = state.fullResult || {};
+  const band = r.overall_band ?? "—";
   const criteria = [
-    { key: "fluency_coherence",  label: "Fluency" },
-    { key: "lexical_resource",   label: "Lexical" },
-    { key: "grammatical_range",  label: "Grammar" },
-    { key: "pronunciation",      label: "Pronunciation" },
+    { key: "fluency_coherence",          label: "Fluency & Coherence" },
+    { key: "lexical_resource",           label: "Lexical Resource" },
+    { key: "grammatical_range_accuracy", label: "Grammar & Accuracy" },
+    { key: "pronunciation",              label: "Pronunciation" },
   ];
 
-  const panels = [1, 2, 3].map(p => {
-    const r = state.fullResults[p - 1] || {};
-    const band = r.overall_band ?? "—";
-    const barsHtml = criteria.map(({ key, label }) => {
-      const score = r[key] ?? 0;
-      const pct = (score / 9) * 100;
-      return `
-      <div class="criterion criterion-compact">
-        <div class="criterion-header">
-          <span class="criterion-name">${label}</span>
-          <span class="criterion-score">${score}</span>
-        </div>
-        <div class="criterion-bar">
-          <div class="criterion-bar-fill" style="width:${pct}%"></div>
-        </div>
-      </div>`;
-    }).join("");
-
+  const criteriaHtml = criteria.map(({ key, label }) => {
+    const criterionObj = (r[key] && typeof r[key] === "object") ? r[key] : {};
+    const score = criterionObj.band ?? 0;
+    const pct   = (score / 9) * 100;
+    const explanation = criterionObj.explanation || "";
+    const examples = criterionObj.examples || [];
+    const feedbackHtml = [
+      explanation ? `<p class="fb-explanation">${escapeHtml(explanation)}</p>` : "",
+      examples.map(ex => `<div class="fb-example">${escapeHtml(ex)}</div>`).join(""),
+    ].join("");
     return `
-    <div class="full-result-panel">
-      <div class="full-result-header">
-        <span class="full-result-part">${PART_ICONS[p]} ${PART_NAMES[p]}</span>
-        <span class="full-result-band">Band ${band}</span>
+    <div class="criterion">
+      <div class="criterion-header">
+        <span class="criterion-name">${label}</span>
+        <span class="criterion-score">${score}</span>
       </div>
-      <div class="full-result-criteria">${barsHtml}</div>
+      <div class="criterion-bar">
+        <div class="criterion-bar-fill" style="width:${pct}%"></div>
+      </div>
+    </div>
+    <div class="feedback-item">
+      <div class="feedback-header" data-feedback="${key}">
+        <span>▼ ${label} feedback</span>
+        <span class="chevron">▾</span>
+      </div>
+      <div class="feedback-body" id="fb-${key}">${feedbackHtml}</div>
     </div>`;
   }).join("");
-
-  const bands = state.fullResults.map(r => r?.overall_band).filter(b => typeof b === "number");
-  const avgBand = bands.length ? (bands.reduce((a, b) => a + b, 0) / bands.length).toFixed(1) : "—";
 
   return `
   <div class="screen-header">
@@ -424,11 +431,11 @@ registerScreen("full_results", () => {
   </div>
 
   <div class="band-badge">
-    <div class="band-number">~${avgBand}</div>
-    <div class="band-label">Average across all 3 parts</div>
+    <div class="band-number">Band ${band}</div>
+    <div class="band-label">${bandLabel(band)}</div>
   </div>
 
-  ${panels}
+  <div class="criteria-list">${criteriaHtml}</div>
 
   <div class="spacer"></div>
 
@@ -447,6 +454,7 @@ const WIRE = {
   menu(el) {
     el.querySelector("#full-speaking-btn").addEventListener("click", () => {
       state.fullMode = true;
+      state.fullResult = null;
       state.fullResults = [];
       state.part = 1;
       state.currentQ = 0;
@@ -585,6 +593,14 @@ const WIRE = {
       if (state.part !== 2 && state.currentQ + 1 < total) {
         state.currentQ++;
         showScreen("recording");
+      } else if (state.fullMode && state.part < 3) {
+        // Full mode: move to next part without assessing, server saves current part data
+        const nextPart = state.part + 1;
+        showToast(`✅ Part ${state.part} done! Now Part ${nextPart}…`, 2500);
+        state.part = nextPart;
+        state.currentQ = 0;
+        state.audioBlobs = [];
+        setTimeout(() => loadTopicScreen(), 1200);
       } else {
         showScreen("assessing");
         await runAssessment();
@@ -623,9 +639,18 @@ const WIRE = {
   },
 
   full_results(el) {
+    el.querySelectorAll(".feedback-header").forEach((hdr) => {
+      hdr.addEventListener("click", () => {
+        const key = hdr.dataset.feedback;
+        const body = document.getElementById(`fb-${key}`);
+        body.classList.toggle("open");
+        hdr.classList.toggle("open");
+      });
+    });
+
     el.querySelector("#retry-full-btn").addEventListener("click", () => {
       state.fullMode = true;
-      state.fullResults = [];
+      state.fullResult = null;
       state.part = 1;
       state.currentQ = 0;
       state.audioBlobs = [];
@@ -633,7 +658,7 @@ const WIRE = {
     });
     el.querySelector("#menu-btn").addEventListener("click", () => {
       state.fullMode = false;
-      state.fullResults = [];
+      state.fullResult = null;
       showScreen("menu");
     });
   },
@@ -652,7 +677,7 @@ async function loadTopicData(screenEl) {
   async function fetchTopic() {
     area.innerHTML = `<div class="loading-spinner" style="margin:40px auto"></div>`;
     try {
-      const data = await generateTopic(state.part, SESSION_TOKEN);
+      const data = await generateTopic(state.part, SESSION_TOKEN, state.fullMode);
       state.topic     = data.topic;
       state.questions = data.questions || [];
       state.cueCard   = data.cue_card  || "";
@@ -667,7 +692,7 @@ async function loadTopicData(screenEl) {
   const PART_DESCRIPTIONS = {
     1: "4–5 вопросов на повседневные темы. Отвечай развёрнуто — 15–30 секунд на каждый вопрос. Вопросы открываются по одному, когда начнёшь.",
     2: "1 минута подготовки, затем 2-минутный монолог по карточке с заданием. Карточка откроется, когда начнёшь.",
-    3: "4–5 абстрактных вопросов, связанных с темой части 2. Развивай мысль — 30–60 секунд на ответ.",
+    3: "4–5 абстрактных вопросов на широкие темы. Развивай мысль — 30–60 секунд на ответ.",
   };
 
   function renderTopicCard(container) {
@@ -736,34 +761,18 @@ async function runAssessment() {
     const result = await requestAssessment(SESSION_TOKEN, INIT_DATA);
 
     if (state.fullMode) {
-      state.fullResults[state.part - 1] = result;
-      if (state.part < 3) {
-        const nextPart = state.part + 1;
-        state.part = nextPart;
-        state.currentQ = 0;
-        state.audioBlobs = [];
-        showToast(`✅ Part ${nextPart - 1} done! Now Part ${nextPart}…`, 2500);
-        setTimeout(() => loadTopicScreen(), 1200);
-      } else {
-        showScreen("full_results");
-      }
+      // Full mode: combined assessment result for the whole test
+      state.fullResult = result;
+      showScreen("full_results");
     } else {
       state.result = result;
       showScreen("results");
     }
   } catch (err) {
     if (state.fullMode) {
-      state.fullResults[state.part - 1] = {};
-      showToast("Assessment failed: " + err.message, 4000);
-      if (state.part < 3) {
-        const nextPart = state.part + 1;
-        state.part = nextPart;
-        state.currentQ = 0;
-        state.audioBlobs = [];
-        setTimeout(() => loadTopicScreen(), 1500);
-      } else {
-        showScreen("full_results");
-      }
+      showToast("Assessment failed: " + err.message, 5000);
+      state.fullResult = {};
+      showScreen("full_results");
     } else {
       showToast("Assessment failed: " + err.message, 5000);
       state.result = {};

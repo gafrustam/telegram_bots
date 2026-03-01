@@ -264,3 +264,155 @@ async def _assess_part2_google(ogg_path: str, system_prompt: str) -> dict:
         config=types.GenerateContentConfig(system_instruction=system_prompt),
     )
     return _parse_json(response.text)
+
+
+async def assess_full_test(
+    p1_ogg_paths: list[str], p1_questions: list[str], p1_topic: str, p1_durations: list[int] | None,
+    p2_ogg_path: str, p2_cue_card: str, p2_duration: float,
+    p3_ogg_paths: list[str], p3_questions: list[str], p3_topic: str, p3_durations: list[int] | None,
+    user_id: int | None = None,
+) -> dict:
+    p1_questions_list = "\n".join(f"  {i + 1}. {q}" for i, q in enumerate(p1_questions))
+    p3_questions_list = "\n".join(f"  {i + 1}. {q}" for i, q in enumerate(p3_questions))
+    # Use first line of cue card as title, full card for context
+    p2_cue_card_title = p2_cue_card.split("\n")[0].strip() if p2_cue_card else "Monologue topic"
+
+    base = _load_base_descriptors()
+    template = (PROMPTS_DIR / "assess_full_test.txt").read_text(encoding="utf-8")
+    system_prompt = template.format(
+        base_descriptors=base,
+        p1_topic=p1_topic,
+        p1_n_questions=str(len(p1_questions)),
+        p1_questions_list=p1_questions_list,
+        p2_cue_card_title=p2_cue_card_title,
+        p2_cue_card=p2_cue_card,
+        p3_topic=p3_topic,
+        p3_n_questions=str(len(p3_questions)),
+        p3_questions_list=p3_questions_list,
+    )
+
+    provider = os.getenv("AI_PROVIDER", "openai").lower()
+    uid_tag = f"user_id={user_id} " if user_id else ""
+    logger.info("%sassessing full test via provider=%s p1=%d p3=%d", uid_tag, provider,
+                len(p1_ogg_paths), len(p3_ogg_paths))
+    try:
+        if provider == "google":
+            result = await _assess_full_test_google(
+                p1_ogg_paths, p1_questions, p1_durations,
+                p2_ogg_path, p2_duration,
+                p3_ogg_paths, p3_questions, p3_durations,
+                system_prompt,
+            )
+        else:
+            result = await _assess_full_test_openai(
+                p1_ogg_paths, p1_questions, p1_durations,
+                p2_ogg_path, p2_duration,
+                p3_ogg_paths, p3_questions, p3_durations,
+                system_prompt,
+            )
+        logger.info("%sfull test assessment OK band=%.1f", uid_tag, result.get("overall_band", 0))
+        return result
+    except Exception as e:
+        logger.error("%sfull test assessment failed [provider=%s]: %s", uid_tag, provider, e)
+        raise
+
+
+async def _assess_full_test_openai(
+    p1_ogg_paths, p1_questions, p1_durations,
+    p2_ogg_path, p2_duration,
+    p3_ogg_paths, p3_questions, p3_durations,
+    system_prompt: str,
+) -> dict:
+    max_p2_ms = 120_000
+    content_parts: list[dict] = []
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        # Part 1 audio
+        content_parts.append({"type": "text", "text": "=== PART 1 (Interview) ==="})
+        for i, (ogg_path, question) in enumerate(zip(p1_ogg_paths, p1_questions)):
+            mp3_path = os.path.join(tmp_dir, f"p1_{i}.mp3")
+            await asyncio.to_thread(_convert_ogg_to_mp3, ogg_path, mp3_path)
+            audio_b64 = _encode_mp3(mp3_path)
+            dur_info = f" (duration: {p1_durations[i]}s)" if p1_durations and i < len(p1_durations) else ""
+            content_parts.append({"type": "text", "text": f"Part 1 Question {i + 1}: {question}{dur_info}"})
+            content_parts.append({"type": "input_audio", "input_audio": {"data": audio_b64, "format": "mp3"}})
+
+        # Part 2 audio
+        content_parts.append({"type": "text", "text": f"=== PART 2 (Long Turn, duration: {round(p2_duration)}s) ==="})
+        p2_mp3 = os.path.join(tmp_dir, "p2.mp3")
+        await asyncio.to_thread(_convert_ogg_to_mp3_trimmed, p2_ogg_path, p2_mp3, max_p2_ms)
+        p2_b64 = _encode_mp3(p2_mp3)
+        content_parts.append({"type": "input_audio", "input_audio": {"data": p2_b64, "format": "mp3"}})
+
+        # Part 3 audio
+        content_parts.append({"type": "text", "text": "=== PART 3 (Discussion) ==="})
+        for i, (ogg_path, question) in enumerate(zip(p3_ogg_paths, p3_questions)):
+            mp3_path = os.path.join(tmp_dir, f"p3_{i}.mp3")
+            await asyncio.to_thread(_convert_ogg_to_mp3, ogg_path, mp3_path)
+            audio_b64 = _encode_mp3(mp3_path)
+            dur_info = f" (duration: {p3_durations[i]}s)" if p3_durations and i < len(p3_durations) else ""
+            content_parts.append({"type": "text", "text": f"Part 3 Question {i + 1}: {question}{dur_info}"})
+            content_parts.append({"type": "input_audio", "input_audio": {"data": audio_b64, "format": "mp3"}})
+
+    content_parts.append({"type": "text", "text": "Now assess the overall performance across the complete speaking test."})
+
+    client = _get_openai_client()
+    model = os.getenv("OPENAI_MODEL", "gpt-audio")
+    response = await client.chat.completions.create(
+        model=model, modalities=["text"],
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": content_parts},
+        ],
+    )
+    return _parse_json(response.choices[0].message.content)
+
+
+async def _assess_full_test_google(
+    p1_ogg_paths, p1_questions, p1_durations,
+    p2_ogg_path, p2_duration,
+    p3_ogg_paths, p3_questions, p3_durations,
+    system_prompt: str,
+) -> dict:
+    from google import genai
+    from google.genai import types
+
+    client = genai.Client(api_key=os.getenv("GOOGLE_AI_API_KEY"))
+    model_name = os.getenv("GOOGLE_AUDIO_MODEL", "gemini-2.5-flash")
+    max_p2_ms = 120_000
+
+    content_parts: list = []
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        content_parts.append(types.Part.from_text(text="=== PART 1 (Interview) ==="))
+        for i, (ogg_path, question) in enumerate(zip(p1_ogg_paths, p1_questions)):
+            mp3_path = os.path.join(tmp_dir, f"p1_{i}.mp3")
+            await asyncio.to_thread(_convert_ogg_to_mp3, ogg_path, mp3_path)
+            dur_info = f" (duration: {p1_durations[i]}s)" if p1_durations and i < len(p1_durations) else ""
+            content_parts.append(types.Part.from_text(text=f"Part 1 Question {i + 1}: {question}{dur_info}"))
+            with open(mp3_path, "rb") as f:
+                content_parts.append(types.Part.from_bytes(data=f.read(), mime_type="audio/mp3"))
+
+        content_parts.append(types.Part.from_text(text=f"=== PART 2 (Long Turn, duration: {round(p2_duration)}s) ==="))
+        p2_mp3 = os.path.join(tmp_dir, "p2.mp3")
+        await asyncio.to_thread(_convert_ogg_to_mp3_trimmed, p2_ogg_path, p2_mp3, max_p2_ms)
+        with open(p2_mp3, "rb") as f:
+            content_parts.append(types.Part.from_bytes(data=f.read(), mime_type="audio/mp3"))
+
+        content_parts.append(types.Part.from_text(text="=== PART 3 (Discussion) ==="))
+        for i, (ogg_path, question) in enumerate(zip(p3_ogg_paths, p3_questions)):
+            mp3_path = os.path.join(tmp_dir, f"p3_{i}.mp3")
+            await asyncio.to_thread(_convert_ogg_to_mp3, ogg_path, mp3_path)
+            dur_info = f" (duration: {p3_durations[i]}s)" if p3_durations and i < len(p3_durations) else ""
+            content_parts.append(types.Part.from_text(text=f"Part 3 Question {i + 1}: {question}{dur_info}"))
+            with open(mp3_path, "rb") as f:
+                content_parts.append(types.Part.from_bytes(data=f.read(), mime_type="audio/mp3"))
+
+    content_parts.append(types.Part.from_text(text="Now assess the overall performance across the complete speaking test."))
+
+    response = await asyncio.to_thread(
+        client.models.generate_content,
+        model=model_name, contents=content_parts,
+        config=types.GenerateContentConfig(system_instruction=system_prompt),
+    )
+    return _parse_json(response.text)
