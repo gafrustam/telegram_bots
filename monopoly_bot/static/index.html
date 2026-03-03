@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<title>Казань Монополия</title>
+<style>
+/* ─── Reset & Base ─────────────────────────────────────── */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f172a;
+  --card:#1e293b;
+  --card2:#243447;
+  --accent:#2563eb;
+  --accent2:#1d4ed8;
+  --text:#e2e8f0;
+  --text2:#94a3b8;
+  --border:#334155;
+  --green:#22c55e;
+  --red:#ef4444;
+  --yellow:#eab308;
+  --radius:10px;
+  --cell:52px;
+  --corner:104px;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden}
+button{cursor:pointer;border:none;border-radius:6px;font-family:inherit;font-size:14px;font-weight:600;transition:all .15s}
+button:active{transform:scale(.97)}
+input,select{background:var(--card2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:inherit;font-size:14px;padding:8px 12px;outline:none;width:100%}
+input:focus,select:focus{border-color:var(--accent)}
+h2{font-size:18px;margin-bottom:12px}
+.hidden{display:none!important}
+
+/* ─── Screens ──────────────────────────────────────────── */
+#lobby-screen,#game-screen{position:fixed;inset:0;display:flex}
+
+/* ─── Lobby ────────────────────────────────────────────── */
+#lobby-screen{flex-direction:column;align-items:center;justify-content:flex-start;padding:20px;overflow-y:auto;gap:16px}
+.lobby-header{text-align:center;padding:16px 0 8px}
+.lobby-header h1{font-size:28px;font-weight:800;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.lobby-header p{color:var(--text2);font-size:13px;margin-top:4px}
+.lobby-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px;width:100%;max-width:460px}
+.lobby-card h2{color:var(--text);margin-bottom:14px;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px}
+.row{display:flex;gap:10px;align-items:center;margin-bottom:12px}
+.row label{color:var(--text2);font-size:13px;white-space:nowrap;min-width:80px}
+.btn-primary{background:var(--accent);color:#fff;padding:10px 20px}
+.btn-primary:hover{background:var(--accent2)}
+.btn-secondary{background:var(--card2);color:var(--text);border:1px solid var(--border);padding:8px 14px}
+.btn-secondary:hover{border-color:var(--accent);color:var(--accent)}
+.btn-success{background:var(--green);color:#fff;padding:8px 14px}
+.btn-success:hover{filter:brightness(1.1)}
+.btn-danger{background:var(--red);color:#fff;padding:8px 14px}
+#create-form{display:flex;flex-direction:column;gap:10px}
+#create-form .slider-row{display:flex;align-items:center;gap:10px}
+#create-form .slider-row label{min-width:100px;font-size:13px;color:var(--text2)}
+#create-form .slider-row input[type=range]{flex:1;accent-color:var(--accent)}
+#create-form .slider-row span{min-width:20px;text-align:center;font-weight:700}
+.games-list{display:flex;flex-direction:column;gap:8px}
+.game-item{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.game-item-info{flex:1}
+.game-item-info .owner{font-weight:700;font-size:14px}
+.game-item-info .slots{font-size:12px;color:var(--text2);margin-top:2px}
+.waiting-players{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.waiting-player{background:var(--card2);border-radius:6px;padding:8px 12px;display:flex;align-items:center;gap:8px;font-size:14px}
+.color-dot{width:14px;height:14px;border-radius:50%;flex-shrink:0}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--yellow);animation:pulse 1.2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.no-games{color:var(--text2);font-size:13px;text-align:center;padding:16px}
+.divider{border:none;border-top:1px solid var(--border);margin:4px 0}
+
+/* ─── Game Screen ──────────────────────────────────────── */
+#game-screen{flex-direction:row;overflow:hidden}
+#board-wrap{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:8px;min-width:0}
+#right-panel{width:280px;background:var(--card);border-left:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden}
+
+/* ─── Board ────────────────────────────────────────────── */
+#board{display:grid;grid-template-columns:var(--corner) repeat(9,var(--cell)) var(--corner);grid-template-rows:var(--corner) repeat(9,var(--cell)) var(--corner);border:2px solid var(--border);background:#0a3d1a;position:relative;flex-shrink:0}
+.cell{border:1px solid rgba(255,255,255,.12);position:relative;display:flex;flex-direction:column;overflow:hidden;cursor:pointer;transition:filter .15s}
+.cell:hover{filter:brightness(1.15)}
+.cell.corner{border:1px solid rgba(255,255,255,.12)}
+.cell-name{font-size:6px;font-weight:600;line-height:1.2;text-align:center;padding:1px 2px;color:#fff;word-break:break-word;flex:1;display:flex;align-items:center;justify-content:center}
+.cell-price{font-size:6px;color:#a5f3c8;text-align:center;padding-bottom:2px}
+.color-strip{height:10px;flex-shrink:0}
+/* strips per side */
+.side-bottom .color-strip{order:-1}
+.side-right .color-strip{width:10px;height:auto;position:absolute;right:0;top:0;bottom:0}
+.side-left .color-strip{width:10px;height:auto;position:absolute;left:0;top:0;bottom:0}
+.side-top .color-strip{order:1}
+/* tokens */
+.tokens{display:flex;flex-wrap:wrap;gap:1px;padding:1px;justify-content:center;position:absolute;bottom:1px;left:1px;right:1px}
+.token{width:12px;height:12px;border-radius:50%;border:1.5px solid rgba(0,0,0,.4);flex-shrink:0;box-shadow:0 1px 3px rgba(0,0,0,.5)}
+/* corner labels */
+.corner-label{font-size:9px;font-weight:800;color:#fff;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:4px;line-height:1.3}
+.corner-icon{font-size:28px;line-height:1}
+/* mortgaged overlay */
+.cell.mortgaged::after{content:'ЗАЛОГ';position:absolute;inset:0;background:rgba(0,0,0,.55);color:#ef4444;font-size:7px;font-weight:800;display:flex;align-items:center;justify-content:center}
+/* house dots */
+.house-row{display:flex;gap:1px;justify-content:center;padding:1px;position:absolute;top:11px;left:0;right:0}
+.house-dot{width:5px;height:5px;border-radius:1px;background:#22c55e}
+.house-dot.hotel{background:#ef4444;width:8px}
+
+/* ─── Right Panel ──────────────────────────────────────── */
+#right-panel{padding:0}
+#panel-tabs{display:flex;border-bottom:1px solid var(--border)}
+.tab-btn{flex:1;padding:10px 0;font-size:12px;font-weight:600;background:none;color:var(--text2);border-radius:0;border-bottom:2px solid transparent}
+.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
+#panel-content{flex:1;overflow-y:auto;padding:10px}
+
+/* Players tab */
+.player-card{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:10px;transition:border-color .2s}
+.player-card.active-player{border-color:var(--yellow);background:#1c2a3a}
+.player-card.bankrupt{opacity:.45}
+.player-info{flex:1;min-width:0}
+.player-name{font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.player-money{font-size:12px;color:var(--green);font-weight:600}
+.player-jail{font-size:11px;color:var(--yellow)}
+.player-color{width:16px;height:16px;border-radius:50%;flex-shrink:0;border:2px solid rgba(255,255,255,.3)}
+.current-badge{font-size:9px;background:var(--yellow);color:#000;border-radius:4px;padding:1px 5px;font-weight:800;margin-left:4px}
+.ai-badge{font-size:9px;background:var(--accent);color:#fff;border-radius:4px;padding:1px 5px;font-weight:600}
+
+/* Dice */
+#dice-area{display:flex;justify-content:center;gap:14px;padding:12px 0}
+.die{width:48px;height:48px;background:#fff;border-radius:8px;display:grid;grid-template-areas:'a . b' '. c .' 'd . e';padding:6px;gap:4px;box-shadow:0 3px 10px rgba(0,0,0,.5)}
+.die-pip{width:100%;height:100%;border-radius:50%;background:#1e293b;align-self:center;justify-self:center}
+.die-pip.hidden-pip{visibility:hidden}
+
+/* Actions */
+#actions{display:flex;flex-wrap:wrap;gap:6px;padding:8px 10px;border-top:1px solid var(--border)}
+.action-btn{flex:1;min-width:calc(50% - 3px);padding:9px 6px;font-size:12px;font-weight:700;border-radius:6px}
+.action-btn.roll{background:var(--accent);color:#fff}
+.action-btn.roll:hover{background:var(--accent2)}
+.action-btn.buy{background:var(--green);color:#fff}
+.action-btn.buy:hover{filter:brightness(1.1)}
+.action-btn.decline{background:var(--card2);color:var(--text2);border:1px solid var(--border)}
+.action-btn.endturn{background:var(--card2);color:var(--text);border:1px solid var(--border)}
+.action-btn.endturn:hover{border-color:var(--green);color:var(--green)}
+.action-btn.bail{background:var(--yellow);color:#000}
+.action-btn.card{background:#8b5cf6;color:#fff}
+
+/* Log tab */
+#log-panel{display:flex;flex-direction:column;gap:4px}
+.log-entry{font-size:11px;color:var(--text2);line-height:1.4;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.log-entry:last-child{color:var(--text);font-weight:500}
+
+/* Props tab */
+#props-list{display:flex;flex-direction:column;gap:6px}
+.prop-item{background:var(--card2);border:1px solid var(--border);border-radius:7px;padding:8px 10px;cursor:pointer;transition:border-color .15s}
+.prop-item:hover{border-color:var(--accent)}
+.prop-item-top{display:flex;align-items:center;gap:6px}
+.prop-color-bar{width:8px;height:28px;border-radius:3px;flex-shrink:0}
+.prop-item-name{font-size:11px;font-weight:600;flex:1;line-height:1.3}
+.prop-item-houses{font-size:10px;color:var(--green)}
+.prop-item-mortgaged{font-size:10px;color:var(--red)}
+.prop-actions{margin-top:6px;display:flex;flex-wrap:wrap;gap:4px}
+.prop-action-btn{font-size:10px;padding:4px 8px;border-radius:4px;font-weight:600}
+.prop-action-btn.build{background:var(--green);color:#fff}
+.prop-action-btn.sell{background:var(--yellow);color:#000}
+.prop-action-btn.mortgage{background:var(--red);color:#fff}
+.prop-action-btn.unmortgage{background:#8b5cf6;color:#fff}
+
+/* Turn indicator */
+#turn-indicator{padding:8px 10px;background:var(--card2);border-bottom:1px solid var(--border);font-size:12px;text-align:center;min-height:36px;display:flex;align-items:center;justify-content:center;gap:6px}
+#turn-indicator .ti-name{font-weight:700;color:var(--yellow)}
+#turn-indicator .ti-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+
+/* Popup (space details) */
+#space-popup{position:fixed;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;max-width:280px;z-index:200;box-shadow:0 8px 32px rgba(0,0,0,.6);display:none}
+#space-popup h3{font-size:15px;margin-bottom:8px}
+#space-popup .sp-color{height:8px;border-radius:4px;margin-bottom:10px}
+#space-popup .sp-row{display:flex;justify-content:space-between;font-size:12px;color:var(--text2);padding:2px 0}
+#space-popup .sp-row span{color:var(--text);font-weight:600}
+#popup-close{position:absolute;top:8px;right:10px;background:none;color:var(--text2);font-size:18px;padding:0;line-height:1}
+#popup-close:hover{color:var(--text)}
+
+/* Winner overlay */
+#winner-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;z-index:300}
+#winner-box{background:var(--card);border:2px solid var(--yellow);border-radius:16px;padding:32px;text-align:center;max-width:320px}
+#winner-box h2{font-size:24px;margin-bottom:8px}
+#winner-box .winner-name{font-size:32px;font-weight:800;color:var(--yellow);margin:12px 0}
+#winner-box p{color:var(--text2);margin-bottom:20px}
+
+/* Mobile responsive */
+@media(max-width:700px){
+  :root{--cell:36px;--corner:72px}
+  #right-panel{width:220px}
+  .cell-name{font-size:5px}
+}
+@media(max-width:520px){
+  #game-screen{flex-direction:column}
+  #board-wrap{flex:none;height:60vh}
+  #right-panel{width:100%;border-left:none;border-top:1px solid var(--border);flex:1}
+  :root{--cell:30px;--corner:60px}
+}
+/* scrollbar */
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+</style>
+</head>
+<body>
+
+<!-- ═══ LOBBY SCREEN ═══════════════════════════════════════ -->
+<div id="lobby-screen">
+  <div class="lobby-header">
+    <h1>Казань Монополия</h1>
+    <p>Мультиплеер · Реальное время</p>
+  </div>
+
+  <!-- Create game -->
+  <div class="lobby-card" id="create-card">
+    <h2>Создать игру</h2>
+    <div id="create-form">
+      <div>
+        <input type="text" id="player-name-input" placeholder="Ваше имя" maxlength="20"/>
+      </div>
+      <div class="slider-row">
+        <label>Игроков</label>
+        <input type="range" id="max-humans" min="1" max="4" value="2" oninput="document.getElementById('humans-val').textContent=this.value"/>
+        <span id="humans-val">2</span>
+      </div>
+      <div class="slider-row">
+        <label>Ботов</label>
+        <input type="range" id="max-ai" min="0" max="4" value="1" oninput="document.getElementById('ai-val').textContent=this.value"/>
+        <span id="ai-val">1</span>
+      </div>
+      <button class="btn-primary" onclick="createGame()" style="width:100%">Создать игру</button>
+    </div>
+  </div>
+
+  <!-- Open games -->
+  <div class="lobby-card">
+    <h2>Открытые игры <span id="games-count" style="color:var(--text2);font-size:13px;font-weight:400"></span></h2>
+    <div id="games-list" class="games-list">
+      <div class="no-games">Загрузка...</div>
+    </div>
+  </div>
+
+  <!-- Waiting room (shown after create/join before game starts) -->
+  <div class="lobby-card hidden" id="waiting-card">
+    <h2>Ждём игроков... <span id="waiting-count" style="color:var(--text2);font-size:13px;font-weight:400"></span></h2>
+    <div id="waiting-players" class="waiting-players"></div>
+    <button class="btn-secondary" style="width:100%;margin-top:12px" onclick="leaveWaiting()">Выйти</button>
+  </div>
+</div>
+
+<!-- ═══ GAME SCREEN ══════════════════════════════════════════ -->
+<div id="game-screen" class="hidden">
+  <!-- Board -->
+  <div id="board-wrap">
+    <div id="board"></div>
+  </div>
+
+  <!-- Right panel -->
+  <div id="right-panel">
+    <div id="turn-indicator">Ожидание...</div>
+
+    <div id="panel-tabs">
+      <button class="tab-btn active" onclick="switchTab('players')">Игроки</button>
+      <button class="tab-btn" onclick="switchTab('log')">Лог</button>
+      <button class="tab-btn" onclick="switchTab('props')">Имущество</button>
+    </div>
+    <div id="panel-content">
+      <div id="tab-players">
+        <div id="dice-area"></div>
+        <div id="players-list"></div>
+      </div>
+      <div id="tab-log" class="hidden">
+        <div id="log-panel"></div>
+      </div>
+      <div id="tab-props" class="hidden">
+        <div id="props-list"></div>
+      </div>
+    </div>
+
+    <div id="actions"></div>
+  </div>
+</div>
+
+<!-- Space info popup -->
+<div id="space-popup">
+  <button id="popup-close" onclick="closePopup()">×</button>
+  <div id="popup-color-bar" class="sp-color"></div>
+  <h3 id="popup-name"></h3>
+  <div id="popup-body"></div>
+</div>
+
+<!-- Winner overlay -->
+<div id="winner-overlay" class="hidden">
+  <div id="winner-box">
+    <h2>Победитель!</h2>
+    <div class="winner-name" id="winner-name"></div>
+    <p>Все остальные игроки обанкротились</p>
+    <button class="btn-primary" onclick="backToLobby()">В лобби</button>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// CONSTANTS & STATE
+// ═══════════════════════════════════════════════════════════
+const WS_URL = location.protocol==='https:' ? 'wss://gafrustam.ru/monopoly/ws' : `ws://${location.hostname}:8003/ws`;
+const BOARD_URL = location.protocol==='https:' ? 'https://gafrustam.ru/monopoly/board' : `http://${location.hostname}:8003/board`;
+const PID_KEY = 'monopoly_pid';
+const GID_KEY = 'monopoly_gid';
+
+const COLOR_HEX = {
+  brown:'#8B4513', lblue:'#87CEEB', pink:'#FF69B4', orange:'#FFA500',
+  red:'#FF0000', yellow:'#FFD700', green:'#008000', dblue:'#00008B'
+};
+
+let ws = null;
+let myPlayerId = localStorage.getItem(PID_KEY);
+let boardData = []; // 40 spaces
+let colorGroups = {};
+let gameState = null;
+let currentTab = 'players';
+let boardBuilt = false;
+
+// ═══════════════════════════════════════════════════════════
+// WEBSOCKET
+// ═══════════════════════════════════════════════════════════
+function connect() {
+  ws = new WebSocket(WS_URL);
+  ws.onopen = () => {
+    send({ action: 'identify', player_id: myPlayerId });
+  };
+  ws.onmessage = e => handleMsg(JSON.parse(e.data));
+  ws.onclose = () => setTimeout(connect, 2000);
+  ws.onerror = () => ws.close();
+}
+
+function send(obj) {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
+function handleMsg(msg) {
+  switch (msg.type) {
+    case 'identified':
+      myPlayerId = msg.player_id;
+      localStorage.setItem(PID_KEY, myPlayerId);
+      renderLobby(msg.open_games || []);
+      tryRejoin();
+      break;
+    case 'lobby':
+      renderLobby(msg.open_games || []);
+      break;
+    case 'game_state':
+      gameState = msg;
+      onGameState(msg);
+      break;
+    case 'error':
+      showError(msg.error);
+      break;
+  }
+}
+
+function tryRejoin() {
+  const gid = localStorage.getItem(GID_KEY);
+  if (gid) send({ action: 'rejoin_game', game_id: gid });
+}
+
+// ═══════════════════════════════════════════════════════════
+// BOARD DATA
+// ═══════════════════════════════════════════════════════════
+async function loadBoard() {
+  try {
+    const r = await fetch(BOARD_URL);
+    const d = await r.json();
+    boardData = d.board;
+    colorGroups = d.color_groups;
+  } catch(e) {
+    console.error('Board load failed', e);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// LOBBY
+// ═══════════════════════════════════════════════════════════
+function renderLobby(games) {
+  const list = document.getElementById('games-list');
+  const cnt = document.getElementById('games-count');
+  cnt.textContent = games.length ? `(${games.length})` : '';
+  if (!games.length) {
+    list.innerHTML = '<div class="no-games">Нет открытых игр</div>';
+    return;
+  }
+  list.innerHTML = '';
+  games.forEach(g => {
+    const d = document.createElement('div');
+    d.className = 'game-item';
+    d.innerHTML = `
+      <div class="game-item-info">
+        <div class="owner">${esc(g.owner)}</div>
+        <div class="slots">Игроки: ${g.humans}/${g.max_humans} · Боты: ${g.ai}</div>
+      </div>
+      <button class="btn-success" onclick="joinGame('${g.game_id}')">Войти</button>
+    `;
+    list.appendChild(d);
+  });
+}
+
+function getPlayerName() {
+  return (document.getElementById('player-name-input').value || '').trim() || 'Игрок';
+}
+
+function createGame() {
+  const name = getPlayerName();
+  const max_humans = parseInt(document.getElementById('max-humans').value);
+  const max_ai = parseInt(document.getElementById('max-ai').value);
+  send({ action: 'create_game', name, max_humans, max_ai });
+}
+
+function joinGame(game_id) {
+  const name = getPlayerName();
+  send({ action: 'join_game', game_id, name });
+}
+
+function leaveWaiting() {
+  localStorage.removeItem(GID_KEY);
+  gameState = null;
+  showLobbyScreen();
+}
+
+function showLobbyScreen() {
+  document.getElementById('lobby-screen').classList.remove('hidden');
+  document.getElementById('game-screen').classList.add('hidden');
+  document.getElementById('winner-overlay').classList.add('hidden');
+  document.getElementById('waiting-card').classList.add('hidden');
+}
+
+function showGameScreen() {
+  document.getElementById('lobby-screen').classList.add('hidden');
+  document.getElementById('game-screen').classList.remove('hidden');
+}
+
+// ═══════════════════════════════════════════════════════════
+// GAME STATE HANDLER
+// ═══════════════════════════════════════════════════════════
+function onGameState(gs) {
+  localStorage.setItem(GID_KEY, gs.game_id);
+
+  if (gs.status === 'lobby') {
+    // Waiting room
+    showWaitingRoom(gs);
+    return;
+  }
+
+  // Playing or finished
+  showGameScreen();
+  if (!boardBuilt && boardData.length) {
+    buildBoard();
+    boardBuilt = true;
+  }
+  renderBoard(gs);
+  renderPlayers(gs);
+  renderActions(gs);
+  renderLog(gs.log || []);
+  renderProps(gs);
+  renderTurnIndicator(gs);
+  if (gs.status === 'finished' && gs.winner) showWinner(gs);
+}
+
+function showWaitingRoom(gs) {
+  document.getElementById('lobby-screen').classList.remove('hidden');
+  document.getElementById('game-screen').classList.add('hidden');
+  document.getElementById('waiting-card').classList.remove('hidden');
+  const total = gs.players.length;
+  const maxH = gs.players.filter(p=>!p.is_ai).length; // rough
+  document.getElementById('waiting-count').textContent = `(${total} чел.)`;
+  const wp = document.getElementById('waiting-players');
+  wp.innerHTML = '';
+  gs.players.forEach(p => {
+    const d = document.createElement('div');
+    d.className = 'waiting-player';
+    d.innerHTML = `<div class="color-dot" style="background:${p.color}"></div>${esc(p.name)}${p.is_ai?'<span class="ai-badge">ИИ</span>':''}`;
+    wp.appendChild(d);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// BOARD BUILDING (CSS GRID)
+// ═══════════════════════════════════════════════════════════
+/*
+  Grid: 11 cols × 11 rows
+  Corners at (col,row): (1,1),(11,1),(1,11),(11,11) — span 2×2
+  Bottom row: spaces 0-10  → row 11, cols 1-11
+  Right col:  spaces 11-20 → col 11, rows 10-1 (bottom to top)
+  Top row:    spaces 21-30 → row 1,  cols 11-1 (right to left)
+  Left col:   spaces 31-39 → col 1,  rows 2-10 (top to bottom)
+
+  Grid positions (1-based col, 1-based row):
+*/
+function spaceGridPos(id) {
+  // Returns {col, row, side}
+  // side: 'bottom','right','top','left'
+  if (id === 0)  return {col:1, row:11, cspan:2, rspan:2, side:'corner'}; // GO (bottom-left)
+  if (id === 10) return {col:11,row:11, cspan:2, rspan:2, side:'corner'}; // Jail (bottom-right)
+  if (id === 20) return {col:11,row:1,  cspan:2, rspan:2, side:'corner'}; // FP (top-right)
+  if (id === 30) return {col:1, row:1,  cspan:2, rspan:2, side:'corner'}; // GTJ (top-left)
+
+  if (id >= 1 && id <= 9) {
+    // Bottom row, spaces go left to right from GO (col1) to Jail (col11)
+    // space 1 → col 2, space 9 → col 10
+    return {col: id+1, row:12, cspan:1, rspan:1, side:'bottom'};
+  }
+  if (id >= 11 && id <= 19) {
+    // Right col, bottom to top: space 11 → row 10, space 19 → row 2
+    return {col:12, row:11-(id-10), cspan:1, rspan:1, side:'right'};
+  }
+  if (id >= 21 && id <= 29) {
+    // Top row, right to left: space 21 → col 10, space 29 → col 2
+    return {col:11-(id-20), row:1, cspan:1, rspan:1, side:'top'};
+  }
+  if (id >= 31 && id <= 39) {
+    // Left col, top to bottom: space 31 → row 2, space 39 → row 10
+    return {col:1, row:(id-29), cspan:1, rspan:1, side:'left'};
+  }
+}
+
+function buildBoard() {
+  const board = document.getElementById('board');
+  board.innerHTML = '';
+
+  // Build a lookup: position → cell element
+  window._cells = {};
+
+  // Inner center div
+  const center = document.createElement('div');
+  center.id = 'board-center';
+  center.style.cssText = 'grid-column:3/11;grid-row:3/11;display:flex;align-items:center;justify-content:center;background:#0d4a22;border:1px solid rgba(255,255,255,.1)';
+  center.innerHTML = `<div style="text-align:center;opacity:.7">
+    <div style="font-size:36px;font-weight:900;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent">КАЗАНЬ</div>
+    <div style="font-size:14px;color:#a5f3c8;font-weight:600;margin-top:4px">МОНОПОЛИЯ</div>
+  </div>`;
+  board.appendChild(center);
+
+  boardData.forEach(space => {
+    const pos = spaceGridPos(space.id);
+    if (!pos) return;
+
+    const cell = document.createElement('div');
+    cell.className = 'cell ' + (pos.side === 'corner' ? 'corner' : `side-${pos.side}`);
+    cell.id = `cell-${space.id}`;
+    cell.dataset.id = space.id;
+
+    let colStyle = `grid-column:${pos.col}/span${pos.cspan||1}`;
+    let rowStyle = `grid-row:${pos.row}/span${pos.rspan||1}`;
+    cell.style.cssText = `${colStyle};${rowStyle}`;
+
+    if (pos.side === 'corner') {
+      cell.innerHTML = cornerHTML(space);
+    } else {
+      cell.innerHTML = spaceHTML(space, pos.side);
+    }
+
+    cell.addEventListener('click', () => showSpacePopup(space, cell));
+    board.appendChild(cell);
+    window._cells[space.id] = cell;
+  });
+}
+
+function cornerHTML(space) {
+  const icons = {0:'🚦', 10:'🚔', 20:'🅿️', 30:'🚨'};
+  const labels = {0:'СТАРТ', 10:'ТЮРЬМА', 20:'СТОЯНКА', 30:'ИДИ\nВ ТЮРЬМУ'};
+  return `<div class="corner-label">
+    <div class="corner-icon">${icons[space.id]||''}</div>
+    <div style="font-size:8px;white-space:pre-line;font-weight:800;margin-top:4px">${labels[space.id]||space.name}</div>
+    <div class="tokens" id="tokens-${space.id}"></div>
+  </div>`;
+}
+
+function spaceHTML(space, side) {
+  let colorStrip = '';
+  if (space.color) {
+    const hex = COLOR_HEX[space.color] || '#888';
+    colorStrip = `<div class="color-strip" style="background:${hex}"></div>`;
+  }
+
+  let icon = '';
+  if (space.type === 'chance') icon = '?';
+  else if (space.type === 'chest') icon = '🎁';
+  else if (space.type === 'railroad') icon = '🚇';
+  else if (space.type === 'utility') icon = '⚡';
+  else if (space.type === 'tax') icon = '💸';
+
+  const priceStr = space.price ? `${space.price}₽` : '';
+
+  return `${colorStrip}
+    <div class="cell-name">${icon ? `<span style="font-size:14px">${icon}</span>` : esc(space.name)}</div>
+    ${priceStr ? `<div class="cell-price">${priceStr}</div>` : ''}
+    <div class="house-row" id="houses-${space.id}"></div>
+    <div class="tokens" id="tokens-${space.id}"></div>`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// RENDER BOARD STATE
+// ═══════════════════════════════════════════════════════════
+function renderBoard(gs) {
+  if (!boardBuilt) return;
+
+  // Clear all tokens
+  document.querySelectorAll('.tokens').forEach(t => t.innerHTML = '');
+  // Clear houses
+  document.querySelectorAll('.house-row').forEach(h => h.innerHTML = '');
+  // Clear mortgaged class
+  document.querySelectorAll('.cell').forEach(c => {
+    c.classList.remove('mortgaged');
+    c.style.outline = '';
+  });
+
+  // Place tokens
+  const byPos = {};
+  gs.players.forEach(p => {
+    if (p.bankrupt) return;
+    if (!byPos[p.position]) byPos[p.position] = [];
+    byPos[p.position].push(p);
+  });
+  Object.entries(byPos).forEach(([pos, players]) => {
+    const container = document.getElementById(`tokens-${pos}`);
+    if (!container) return;
+    players.forEach(p => {
+      const tok = document.createElement('div');
+      tok.className = 'token';
+      tok.style.background = p.color;
+      tok.title = p.name;
+      // Highlight current player token
+      const cp = gs.players[gs.current_player_idx];
+      if (cp && p.id === cp.id) {
+        tok.style.border = '2px solid #fff';
+        tok.style.boxShadow = '0 0 6px ' + p.color;
+      }
+      container.appendChild(tok);
+    });
+  });
+
+  // Houses & mortgages
+  gs.players.forEach(p => {
+    Object.entries(p.properties || {}).forEach(([posStr, info]) => {
+      const pos = parseInt(posStr);
+      const cell = window._cells[pos];
+      if (!cell) return;
+      if (info.mortgaged) cell.classList.add('mortgaged');
+
+      // Houses
+      const hr = document.getElementById(`houses-${pos}`);
+      if (hr && info.houses > 0) {
+        if (info.houses === 5) {
+          const dot = document.createElement('div');
+          dot.className = 'house-dot hotel';
+          hr.appendChild(dot);
+        } else {
+          for (let i = 0; i < info.houses; i++) {
+            const dot = document.createElement('div');
+            dot.className = 'house-dot';
+            hr.appendChild(dot);
+          }
+        }
+      }
+
+      // Owner color outline on cell
+      cell.style.outline = `1.5px solid ${p.color}`;
+    });
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// PLAYERS LIST
+// ═══════════════════════════════════════════════════════════
+function renderPlayers(gs) {
+  const cp = gs.players[gs.current_player_idx];
+  const list = document.getElementById('players-list');
+  list.innerHTML = '';
+  gs.players.forEach((p, i) => {
+    const isActive = i === gs.current_player_idx;
+    const d = document.createElement('div');
+    d.className = 'player-card' + (isActive ? ' active-player' : '') + (p.bankrupt ? ' bankrupt' : '');
+    d.innerHTML = `
+      <div class="player-color" style="background:${p.color}"></div>
+      <div class="player-info">
+        <div class="player-name">
+          ${esc(p.name)}
+          ${isActive ? '<span class="current-badge">ХОД</span>' : ''}
+          ${p.is_ai ? '<span class="ai-badge">ИИ</span>' : ''}
+          ${p.bankrupt ? '<span style="font-size:10px;color:var(--red);margin-left:4px">БАНКРОТ</span>' : ''}
+        </div>
+        <div class="player-money">${p.money}₽</div>
+        ${p.in_jail ? `<div class="player-jail">В тюрьме (${p.jail_turns}/3)</div>` : ''}
+        ${p.jail_free_cards > 0 ? `<div style="font-size:10px;color:#a78bfa">Карта освобождения x${p.jail_free_cards}</div>` : ''}
+        <div style="font-size:10px;color:var(--text2);margin-top:2px">${boardData[p.position]?.name||''}</div>
+      </div>
+    `;
+    list.appendChild(d);
+  });
+
+  // Dice
+  renderDice(gs);
+}
+
+// ═══════════════════════════════════════════════════════════
+// DICE
+// ═══════════════════════════════════════════════════════════
+const PIPS = {
+  1:[[1,1,0,0,0,0]],
+  2:[[1,0,0,0,0,1]],
+  3:[[1,0,0,0,1,1]],
+  4:[[1,1,0,0,1,1]],
+  5:[[1,1,0,1,1,1]],
+  6:[[1,1,1,1,1,1]],
+};
+// pip grid: [tl,tr,ml,mr,bl,br] — 6 cells in a 2×3 grid
+function dieHTML(n) {
+  if (!n || n < 1 || n > 6) return '<div class="die"></div>';
+  const pips = PIPS[n][0];
+  // Middle cell: for 1,3,5 add center pip
+  const hasCenter = (n % 2 === 1);
+  let html = `<div class="die" style="display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr 1fr;padding:5px;gap:3px;width:44px;height:44px;background:#fff;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.4)">`;
+  // top-left, top-right
+  html += `<div style="border-radius:50%;width:10px;height:10px;background:${pips[0]?'#1e293b':'transparent'};align-self:start;justify-self:start"></div>`;
+  html += `<div style="border-radius:50%;width:10px;height:10px;background:${pips[1]?'#1e293b':'transparent'};align-self:start;justify-self:end"></div>`;
+  // mid-left, mid-right
+  html += `<div style="border-radius:50%;width:10px;height:10px;background:${(n>=6)?'#1e293b':(n===5)?'#1e293b':'transparent'};align-self:center;justify-self:start"></div>`;
+  if (hasCenter) {
+    html += `<div style="grid-column:span 1;border-radius:50%;width:10px;height:10px;background:#1e293b;align-self:center;justify-self:center;grid-column:1/3"></div>`;
+  } else {
+    html += `<div style="border-radius:50%;width:10px;height:10px;background:${(n>=6)?'#1e293b':'transparent'};align-self:center;justify-self:end"></div>`;
+  }
+  // bot-left, bot-right
+  html += `<div style="border-radius:50%;width:10px;height:10px;background:${pips[4]?'#1e293b':'transparent'};align-self:end;justify-self:start"></div>`;
+  html += `<div style="border-radius:50%;width:10px;height:10px;background:${pips[5]?'#1e293b':'transparent'};align-self:end;justify-self:end"></div>`;
+  html += `</div>`;
+  return html;
+}
+
+function renderDice(gs) {
+  const area = document.getElementById('dice-area');
+  if (gs.dice_rolled && gs.dice && gs.dice.length === 2) {
+    area.innerHTML = `
+      <div style="display:flex;gap:10px;align-items:center;flex-direction:column">
+        <div style="display:flex;gap:10px">${dieHTML(gs.dice[0])}${dieHTML(gs.dice[1])}</div>
+        <div style="font-size:12px;color:var(--text2)">Выпало: <b>${gs.dice[0]+gs.dice[1]}</b>${gs.dice[0]===gs.dice[1]?' · Дубль!':''}</div>
+      </div>`;
+  } else {
+    area.innerHTML = '';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// TURN INDICATOR
+// ═══════════════════════════════════════════════════════════
+function renderTurnIndicator(gs) {
+  const ti = document.getElementById('turn-indicator');
+  if (gs.status === 'finished') { ti.textContent = 'Игра окончена'; return; }
+  const cp = gs.players[gs.current_player_idx];
+  if (!cp) return;
+  const isMe = cp.id === myPlayerId;
+  ti.innerHTML = `
+    <div class="ti-dot" style="background:${cp.color}"></div>
+    <span>Ход: <span class="ti-name">${esc(cp.name)}</span>${isMe ? ' (ваш ход)' : ''}</span>
+  `;
+  ti.style.color = isMe ? '#eab308' : 'var(--text2)';
+}
+
+// ═══════════════════════════════════════════════════════════
+// ACTION BUTTONS
+// ═══════════════════════════════════════════════════════════
+function renderActions(gs) {
+  const area = document.getElementById('actions');
+  area.innerHTML = '';
+
+  if (gs.status !== 'playing') return;
+
+  const cp = gs.players[gs.current_player_idx];
+  if (!cp || cp.id !== myPlayerId) return;
+
+  const phase = gs.phase;
+  const btns = [];
+
+  if (phase === 'roll') {
+    if (cp.in_jail) {
+      btns.push({label:'Бросить (попытка)', cls:'roll', action:'roll_dice'});
+      if (cp.money >= 50) btns.push({label:'Заплатить 50₽', cls:'bail', action:'pay_bail'});
+      if (cp.jail_free_cards > 0) btns.push({label:'Использовать карту', cls:'card', action:'use_card'});
+    } else {
+      btns.push({label:'Бросить кубики', cls:'roll', action:'roll_dice'});
+    }
+  }
+  if (phase === 'buy_decision' && gs.pending) {
+    const pend = gs.pending;
+    const space = boardData[pend.position];
+    btns.push({label:`Купить за ${pend.price}₽`, cls:'buy', action:'buy'});
+    btns.push({label:'Отказаться', cls:'decline', action:'decline_buy'});
+  }
+  if (phase === 'end_turn') {
+    btns.push({label:'Завершить ход', cls:'endturn', action:'end_turn'});
+  }
+
+  btns.forEach(b => {
+    const btn = document.createElement('button');
+    btn.className = `action-btn ${b.cls}`;
+    btn.textContent = b.label;
+    btn.onclick = () => send({ action: b.action });
+    area.appendChild(btn);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// LOG
+// ═══════════════════════════════════════════════════════════
+function renderLog(log) {
+  const panel = document.getElementById('log-panel');
+  panel.innerHTML = '';
+  const entries = log.slice(-20);
+  entries.forEach((entry, i) => {
+    const d = document.createElement('div');
+    d.className = 'log-entry';
+    d.textContent = entry;
+    panel.appendChild(d);
+  });
+  panel.scrollTop = panel.scrollHeight;
+}
+
+// ═══════════════════════════════════════════════════════════
+// PROPERTIES PANEL
+// ═══════════════════════════════════════════════════════════
+function renderProps(gs) {
+  const list = document.getElementById('props-list');
+  list.innerHTML = '';
+
+  const me = gs.players.find(p => p.id === myPlayerId);
+  if (!me) { list.innerHTML = '<div style="color:var(--text2);font-size:12px">Вы не в этой игре</div>'; return; }
+
+  const isMyTurn = gs.players[gs.current_player_idx]?.id === myPlayerId;
+  const myProps = Object.entries(me.properties || {});
+
+  if (!myProps.length) {
+    list.innerHTML = '<div style="color:var(--text2);font-size:12px;padding:8px 0">У вас нет имущества</div>';
+    return;
+  }
+
+  myProps.forEach(([posStr, info]) => {
+    const pos = parseInt(posStr);
+    const space = boardData[pos];
+    if (!space) return;
+
+    const hex = space.color ? (COLOR_HEX[space.color] || '#888') : '#666';
+    const houseLabel = info.houses === 5 ? 'Отель' : info.houses > 0 ? `${info.houses} дом(а)` : '';
+    const mortLabel = info.mortgaged ? 'Заложено' : '';
+
+    const item = document.createElement('div');
+    item.className = 'prop-item';
+    item.dataset.pos = pos;
+    item.innerHTML = `
+      <div class="prop-item-top">
+        <div class="prop-color-bar" style="background:${hex}"></div>
+        <div class="prop-item-name">${esc(space.name)}</div>
+        ${houseLabel ? `<span class="prop-item-houses">${houseLabel}</span>` : ''}
+        ${mortLabel ? `<span class="prop-item-mortgaged">${mortLabel}</span>` : ''}
+      </div>
+      <div class="prop-actions" id="prop-actions-${pos}"></div>
+    `;
+
+    const actArea = item.querySelector(`#prop-actions-${pos}`);
+
+    if (isMyTurn && space.type === 'property' && !info.mortgaged) {
+      // Build house
+      if (info.houses < 5) {
+        const btn = document.createElement('button');
+        btn.className = 'prop-action-btn build';
+        btn.textContent = `+🏠 ${space.house_cost}₽`;
+        btn.onclick = (e) => { e.stopPropagation(); send({action:'build_house',position:pos}); };
+        actArea.appendChild(btn);
+      }
+      // Sell house
+      if (info.houses > 0) {
+        const btn = document.createElement('button');
+        btn.className = 'prop-action-btn sell';
+        btn.textContent = `-🏠 ${Math.floor(space.house_cost/2)}₽`;
+        btn.onclick = (e) => { e.stopPropagation(); send({action:'sell_house',position:pos}); };
+        actArea.appendChild(btn);
+      }
+    }
+
+    if (isMyTurn) {
+      if (!info.mortgaged && info.houses === 0) {
+        const btn = document.createElement('button');
+        btn.className = 'prop-action-btn mortgage';
+        btn.textContent = `Залог ${space.mortgage_value||0}₽`;
+        btn.onclick = (e) => { e.stopPropagation(); send({action:'mortgage',position:pos}); };
+        actArea.appendChild(btn);
+      }
+      if (info.mortgaged) {
+        const unm = Math.floor((space.mortgage_value||0)*1.1);
+        const btn = document.createElement('button');
+        btn.className = 'prop-action-btn unmortgage';
+        btn.textContent = `Выкуп ${unm}₽`;
+        btn.onclick = (e) => { e.stopPropagation(); send({action:'unmortgage',position:pos}); };
+        actArea.appendChild(btn);
+      }
+    }
+
+    item.addEventListener('click', () => {
+      // Scroll to space on board
+      const cell = window._cells && window._cells[pos];
+      if (cell) cell.scrollIntoView({behavior:'smooth', block:'center'});
+      showSpacePopup(space, cell);
+    });
+
+    list.appendChild(item);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// SPACE POPUP
+// ═══════════════════════════════════════════════════════════
+function showSpacePopup(space, cellEl) {
+  const popup = document.getElementById('space-popup');
+  document.getElementById('popup-name').textContent = space.name;
+
+  const colorBar = document.getElementById('popup-color-bar');
+  if (space.color) {
+    colorBar.style.background = COLOR_HEX[space.color] || '#888';
+    colorBar.style.display = 'block';
+  } else {
+    colorBar.style.display = 'none';
+  }
+
+  let body = '';
+  if (space.type === 'property' || space.type === 'railroad' || space.type === 'utility') {
+    if (space.price) body += `<div class="sp-row">Цена<span>${space.price}₽</span></div>`;
+    if (space.mortgage_value) body += `<div class="sp-row">Залог<span>${space.mortgage_value}₽</span></div>`;
+    if (space.house_cost) body += `<div class="sp-row">Постройка<span>${space.house_cost}₽</span></div>`;
+    if (space.district) body += `<div class="sp-row">Район<span>${esc(space.district)}</span></div>`;
+    if (space.rents && space.rents.length) {
+      body += `<hr style="border-color:var(--border);margin:6px 0">`;
+      const labels = ['Аренда','1 дом','2 дома','3 дома','4 дома','Отель'];
+      space.rents.forEach((r,i) => {
+        if (r) body += `<div class="sp-row">${labels[i]||i}<span>${r}₽</span></div>`;
+      });
+    }
+    // Show owner if any
+    if (gameState) {
+      const owner = gameState.players.find(p => p.properties && p.properties[space.id] !== undefined);
+      if (owner) {
+        body += `<hr style="border-color:var(--border);margin:6px 0">`;
+        body += `<div class="sp-row">Владелец<span style="color:${owner.color}">${esc(owner.name)}</span></div>`;
+        const info = owner.properties[space.id];
+        if (info.mortgaged) body += `<div class="sp-row">Статус<span style="color:var(--red)">Заложено</span></div>`;
+        if (info.houses > 0) {
+          const hl = info.houses === 5 ? 'Отель' : `${info.houses} дом(а)`;
+          body += `<div class="sp-row">Застройка<span style="color:var(--green)">${hl}</span></div>`;
+        }
+      }
+    }
+  } else if (space.type === 'tax') {
+    body += `<div class="sp-row">Налог<span>${space.price}₽</span></div>`;
+  } else if (space.type === 'corner') {
+    body += `<div style="font-size:12px;color:var(--text2)">Угловая клетка</div>`;
+  } else {
+    body += `<div style="font-size:12px;color:var(--text2)">Тяните карту</div>`;
+  }
+  document.getElementById('popup-body').innerHTML = body;
+
+  // Position popup near cell or center
+  popup.style.display = 'block';
+  const r = popup.getBoundingClientRect();
+  if (cellEl) {
+    const cr = cellEl.getBoundingClientRect();
+    let left = cr.right + 8;
+    let top = cr.top;
+    if (left + 280 > window.innerWidth) left = cr.left - 280 - 8;
+    if (top + r.height > window.innerHeight) top = window.innerHeight - r.height - 8;
+    if (top < 8) top = 8;
+    if (left < 8) left = 8;
+    popup.style.left = left + 'px';
+    popup.style.top = top + 'px';
+  } else {
+    popup.style.left = '50%';
+    popup.style.top = '50%';
+    popup.style.transform = 'translate(-50%,-50%)';
+  }
+}
+
+function closePopup() {
+  document.getElementById('space-popup').style.display = 'none';
+}
+document.addEventListener('click', e => {
+  const popup = document.getElementById('space-popup');
+  if (popup.style.display !== 'none' && !popup.contains(e.target) && !e.target.closest('.cell')) {
+    closePopup();
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// TABS
+// ═══════════════════════════════════════════════════════════
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach((b,i) => {
+    const names = ['players','log','props'];
+    b.classList.toggle('active', names[i] === tab);
+  });
+  ['players','log','props'].forEach(t => {
+    document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== tab);
+  });
+  if (tab === 'log' && gameState) renderLog(gameState.log || []);
+}
+
+// ═══════════════════════════════════════════════════════════
+// WINNER
+// ═══════════════════════════════════════════════════════════
+function showWinner(gs) {
+  const winner = gs.players.find(p => p.id === gs.winner);
+  if (!winner) return;
+  document.getElementById('winner-name').textContent = winner.name;
+  document.getElementById('winner-name').style.color = winner.color;
+  document.getElementById('winner-overlay').classList.remove('hidden');
+  localStorage.removeItem(GID_KEY);
+}
+
+function backToLobby() {
+  localStorage.removeItem(GID_KEY);
+  gameState = null;
+  boardBuilt = false;
+  document.getElementById('winner-overlay').classList.add('hidden');
+  showLobbyScreen();
+  send({ action: 'list_games' });
+}
+
+// ═══════════════════════════════════════════════════════════
+// ERROR
+// ═══════════════════════════════════════════════════════════
+function showError(msg) {
+  // Flash a temporary banner
+  let banner = document.getElementById('err-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'err-banner';
+    banner.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);background:#ef4444;color:#fff;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;z-index:999;opacity:0;transition:opacity .2s;pointer-events:none';
+    document.body.appendChild(banner);
+  }
+  banner.textContent = msg;
+  banner.style.opacity = '1';
+  clearTimeout(banner._t);
+  banner._t = setTimeout(() => banner.style.opacity = '0', 3000);
+}
+
+// ═══════════════════════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════════════════════
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ═══════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════
+async function init() {
+  await loadBoard();
+  connect();
+}
+
+init();
+</script>
+</body>
+</html>
