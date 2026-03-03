@@ -40,13 +40,9 @@ input:focus{border-color:var(--accent)}
 .lobby-header p{color:var(--text2);font-size:12px;margin-top:4px}
 .lobby-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px;width:100%;max-width:460px}
 .lobby-card h2{color:var(--text);margin-bottom:14px;font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px}
-
-/* Name input */
 .name-input-wrap{position:relative}
 .name-input-wrap input{padding-left:36px;font-size:15px}
 .name-input-wrap .name-prefix{position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:16px;pointer-events:none}
-
-/* Player count stepper */
 .player-setup{display:flex;flex-direction:column;gap:12px}
 .stepper-row{display:flex;align-items:center;gap:12px}
 .stepper-label{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
@@ -58,13 +54,10 @@ input:focus{border-color:var(--accent)}
 .stepper-btn:hover{background:var(--border)}
 .stepper-btn:disabled{opacity:.3;cursor:default}
 .stepper-val{width:36px;text-align:center;font-size:16px;font-weight:800;color:var(--text)}
-
-/* Player avatars preview */
 .players-preview{display:flex;gap:6px;margin-top:4px;flex-wrap:wrap}
 .avatar-chip{display:flex;align-items:center;gap:5px;background:var(--card2);border:1px solid var(--border);border-radius:20px;padding:4px 10px 4px 6px;font-size:12px;font-weight:600;transition:all .2s}
 .avatar-chip .dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
 .avatar-chip.bot-chip{border-style:dashed}
-
 .btn-primary{background:var(--accent);color:#fff;padding:11px 20px;width:100%;font-size:15px;margin-top:4px;border-radius:8px}
 .btn-primary:hover{background:var(--accent2)}
 .btn-secondary{background:var(--card2);color:var(--text);border:1px solid var(--border);padding:8px 14px}
@@ -81,11 +74,25 @@ input:focus{border-color:var(--accent)}
 .status-dot{width:8px;height:8px;border-radius:50%;background:var(--yellow);animation:pulse 1.2s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
 .no-games{color:var(--text2);font-size:13px;text-align:center;padding:14px}
+.lobby-divider{border:none;border-top:1px solid var(--border);width:100%;max-width:460px}
 
 /* ─── Game Screen ──────────────────────────────────────── */
-#game-screen{flex-direction:row;overflow:hidden}
-#board-wrap{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:6px;min-width:0}
-#right-panel{width:270px;background:var(--card);border-left:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden}
+#game-screen{flex-direction:column;overflow:hidden}
+
+/* ─── Board Wrap — square, full width ─────────────────── */
+#board-wrap{
+  width:100%;
+  /* square: use the smaller of full-width vs (viewport - bottom bar) */
+  height:min(100vw, calc(100dvh - 195px));
+  max-width:min(100vw, calc(100dvh - 195px));
+  margin:0 auto;
+  flex-shrink:0;
+  position:relative;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:var(--bg);
+}
 
 /* ─── Board ────────────────────────────────────────────── */
 #board{
@@ -97,111 +104,232 @@ input:focus{border-color:var(--accent)}
   position:relative;
   flex-shrink:0;
   border-radius:4px;
-  overflow:hidden;
+  overflow:visible;
 }
 
-/* ─── Cells ─────────────────────────────────────────────── */
-.cell{
-  border:1px solid rgba(255,255,255,.08);
-  position:relative;
+/* ─── Token Overlay ────────────────────────────────────── */
+#token-overlay{
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  z-index:15;
+  overflow:visible;
+}
+.ov-token{
+  position:absolute;
+  pointer-events:none;
+  transform:translate(-50%,-50%);
+  transition:left .22s cubic-bezier(.4,0,.2,1), top .22s cubic-bezier(.4,0,.2,1);
+  filter:drop-shadow(0 2px 5px rgba(0,0,0,.7));
+  z-index:15;
+}
+.ov-token.just-arrived{animation:tokenArrival .35s cubic-bezier(.175,.885,.32,1.275) forwards}
+@keyframes tokenArrival{
+  0%  {transform:translate(-50%,-80%) scale(.6)}
+  60% {transform:translate(-50%,-44%) scale(1.18)}
+  100%{transform:translate(-50%,-50%) scale(1)}
+}
+.ov-token.bankrupt{opacity:.3}
+
+/* ─── Dice Overlay (on board) ─────────────────────────── */
+#dice-overlay{
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  pointer-events:none;
+  z-index:25;
+}
+.dice-anim-wrap{
+  display:flex;
+  gap:14px;
+  padding:16px 22px;
+  background:rgba(10,18,34,.88);
+  border-radius:18px;
+  border:1px solid rgba(255,255,255,.12);
+  backdrop-filter:blur(10px);
+  box-shadow:0 8px 32px rgba(0,0,0,.6);
+}
+/* Individual die */
+.die-face{
+  width:52px;height:52px;
+  background:linear-gradient(145deg,#fff,#e8e8e8);
+  border-radius:10px;
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  align-items:center;
+  justify-items:center;
+  padding:6px;
+  box-shadow:0 3px 12px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.8);
+}
+.die-pip{width:10px;height:10px;border-radius:50%;background:#1a2035}
+.die-pip.empty{background:transparent}
+
+@keyframes diceRollAnim{
+  0%  {transform:rotate(0deg)   scale(1)    translateY(0)}
+  8%  {transform:rotate(-18deg) scale(1.1)  translateY(-5px)}
+  18% {transform:rotate(22deg)  scale(1.15) translateY(-9px)}
+  28% {transform:rotate(-28deg) scale(1.2)  translateY(-12px)}
+  38% {transform:rotate(24deg)  scale(1.16) translateY(-8px)}
+  48% {transform:rotate(-20deg) scale(1.12) translateY(-6px)}
+  58% {transform:rotate(16deg)  scale(1.09) translateY(-4px)}
+  70% {transform:rotate(-10deg) scale(1.05) translateY(-2px)}
+  82% {transform:rotate(6deg)   scale(1.02) translateY(-1px)}
+  92% {transform:rotate(-3deg)  scale(1.01) translateY(0)}
+  100%{transform:rotate(0deg)   scale(1)    translateY(0)}
+}
+.die-face.rolling{
+  animation:diceRollAnim .95s ease-out;
+}
+@keyframes diceReveal{
+  0%  {transform:scale(.4) rotate(25deg);opacity:0}
+  55% {transform:scale(1.18) rotate(-5deg);opacity:1}
+  100%{transform:scale(1) rotate(0deg);opacity:1}
+}
+.die-face.reveal{
+  animation:diceReveal .32s ease-out forwards;
+}
+
+/* ─── Bottom Section ───────────────────────────────────── */
+#bottom-section{
+  flex:1;
   display:flex;
   flex-direction:column;
   overflow:hidden;
-  cursor:pointer;
-  transition:filter .12s;
-  background:#0c3d18;
+  min-height:0;
+  background:var(--card);
+  border-top:1px solid var(--border);
 }
-.cell:hover{filter:brightness(1.2)}
 
-/* Color strip */
-.color-strip{flex-shrink:0}
-.side-bottom .color-strip,.side-top .color-strip{height:12px;width:100%}
-.side-right .color-strip,.side-left .color-strip{width:12px;height:100%;position:absolute;top:0;bottom:0}
-.side-right .color-strip{right:0}
-.side-left .color-strip{left:0}
-.side-bottom .color-strip{order:-1}
-.side-top .color-strip{order:99}
+/* Turn indicator */
+#turn-indicator{
+  padding:5px 12px;
+  background:var(--card2);
+  border-bottom:1px solid var(--border);
+  font-size:12px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  flex-shrink:0;
+  min-height:28px;
+}
+#turn-indicator .ti-name{font-weight:700;color:var(--yellow)}
+#turn-indicator .ti-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
 
-/* Cell inner content */
-.cell-inner{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2px;overflow:hidden;gap:1px}
-.side-right .cell-inner,.side-left .cell-inner{padding:2px 14px 2px 2px}
-.side-left .cell-inner{padding:2px 2px 2px 14px}
+/* Dice result bar */
+#dice-bar{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  padding:4px 0 2px;
+  flex-shrink:0;
+  background:var(--bg);
+  border-bottom:1px solid var(--border);
+  transition:all .2s;
+}
+#dice-bar.empty{display:none}
+.bar-die{
+  width:30px;height:30px;
+  background:linear-gradient(145deg,#fff,#e8e8e8);
+  border-radius:6px;
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  align-items:center;
+  justify-items:center;
+  padding:4px;
+  box-shadow:0 1px 6px rgba(0,0,0,.5);
+}
+.bar-pip{width:7px;height:7px;border-radius:50%;background:#1a2035}
+.bar-pip.empty{background:transparent}
+@keyframes barDiePop{
+  0%{transform:scale(.5);opacity:0}
+  65%{transform:scale(1.15);opacity:1}
+  100%{transform:scale(1);opacity:1}
+}
+.bar-die.popped{animation:barDiePop .3s ease-out}
 
-.cell-icon{font-size:13px;line-height:1;flex-shrink:0}
-.cell-name{font-size:5.5px;font-weight:700;text-align:center;color:#e8f5e9;line-height:1.25;word-break:break-word;overflow:hidden}
-.cell-price{font-size:5px;color:#a5f3c8;text-align:center;font-weight:600;white-space:nowrap}
+/* ─── Players Strip ────────────────────────────────────── */
+#players-strip{
+  display:flex;
+  gap:6px;
+  padding:6px 8px;
+  overflow-x:auto;
+  flex-shrink:0;
+  border-bottom:1px solid var(--border);
+  -webkit-overflow-scrolling:touch;
+  scrollbar-width:none;
+}
+#players-strip::-webkit-scrollbar{display:none}
+.strip-card{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:2px;
+  min-width:60px;
+  padding:5px 5px 4px;
+  background:var(--card2);
+  border-radius:9px;
+  border:1.5px solid var(--border);
+  flex-shrink:0;
+  transition:border-color .2s, background .2s;
+}
+.strip-card.active-sc{
+  border-color:var(--yellow);
+  background:#18283e;
+  box-shadow:0 0 10px rgba(234,179,8,.15);
+}
+.strip-card.bankrupt-sc{opacity:.38}
+.strip-pawn{
+  width:22px;height:26px;
+  flex-shrink:0;
+}
+.strip-name{
+  font-size:9px;font-weight:700;
+  text-align:center;color:var(--text);
+  white-space:nowrap;max-width:60px;
+  overflow:hidden;text-overflow:ellipsis;
+}
+.strip-money{font-size:9px;color:var(--green);font-weight:700}
+.strip-pos{
+  font-size:7px;color:var(--text2);
+  text-align:center;white-space:nowrap;
+  max-width:62px;overflow:hidden;text-overflow:ellipsis;
+}
+.strip-badge{
+  font-size:7px;border-radius:3px;
+  padding:1px 3px;font-weight:800;
+  line-height:1.2;
+}
+.strip-badge.turn{background:var(--yellow);color:#000}
+.strip-badge.ai{background:var(--accent);color:#fff}
+.strip-badge.jail{background:#7c3aed;color:#fff}
 
-/* Side-specific text orientation */
-.side-right .cell-inner{writing-mode:vertical-lr;text-orientation:mixed;transform:rotate(180deg);padding:4px}
-.side-left .cell-inner{writing-mode:vertical-lr;text-orientation:mixed;padding:4px}
-
-/* Property cell highlight */
-.cell.owned{outline:2px solid;outline-offset:-2px}
-
-/* Corner cells */
-.cell.corner{background:#0c3d18}
-.corner-inner{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:6px}
-.corner-icon{font-size:30px;line-height:1}
-.corner-label-text{font-size:8px;font-weight:800;color:#fff;text-align:center;line-height:1.3;white-space:pre-line}
-
-/* Mortgaged overlay */
-.cell.mortgaged::after{content:'ЗАЛОГ';position:absolute;inset:0;background:rgba(0,0,0,.6);color:#ef4444;font-size:6px;font-weight:800;display:flex;align-items:center;justify-content:center;letter-spacing:.5px}
-
-/* Houses */
-.house-row{display:flex;gap:1px;justify-content:center;flex-shrink:0;flex-wrap:wrap;min-height:5px}
-.side-bottom .house-row,.side-top .house-row{padding:1px 2px;flex-direction:row}
-.side-right .house-row,.side-left .house-row{position:absolute;top:1px;left:1px;right:13px;flex-direction:column}
-.side-right .house-row{left:13px;right:1px}
-.house-dot{width:5px;height:5px;border-radius:1px;background:#22c55e;flex-shrink:0}
-.house-dot.hotel{background:#ef4444;width:5px;height:7px;border-radius:2px}
-
-/* Tokens */
-.tokens{display:flex;flex-wrap:wrap;gap:1px;padding:1px;justify-content:center;position:absolute;bottom:1px;left:1px;right:1px}
-.cell.corner .tokens{position:absolute;bottom:4px;left:4px;right:4px}
-.token{width:11px;height:11px;border-radius:50%;border:1.5px solid rgba(0,0,0,.4);flex-shrink:0;box-shadow:0 1px 4px rgba(0,0,0,.6)}
-
-/* Chance / Chest special background */
-.cell.chance-cell{background:#1a1a3e}
-.cell.chest-cell{background:#1a2e1a}
-
-/* ─── Right Panel ──────────────────────────────────────── */
-#panel-tabs{display:flex;border-bottom:1px solid var(--border)}
-.tab-btn{flex:1;padding:9px 0;font-size:12px;font-weight:600;background:none;color:var(--text2);border-radius:0;border-bottom:2px solid transparent}
-.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
-#panel-content{flex:1;overflow-y:auto;padding:10px}
-
-/* Players tab */
-.player-card{background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:7px;display:flex;align-items:center;gap:9px;transition:border-color .2s}
-.player-card.active-player{border-color:var(--yellow);background:#1c2a3a}
-.player-card.bankrupt{opacity:.4}
-.player-info{flex:1;min-width:0}
-.player-name{font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.player-money{font-size:11px;color:var(--green);font-weight:700}
-.player-color{width:15px;height:15px;border-radius:50%;flex-shrink:0;border:2px solid rgba(255,255,255,.25)}
-.current-badge{font-size:8px;background:var(--yellow);color:#000;border-radius:3px;padding:1px 4px;font-weight:800;margin-left:3px}
-.ai-badge{font-size:8px;background:var(--accent);color:#fff;border-radius:3px;padding:1px 4px;font-weight:600}
-
-/* Dice */
-#dice-area{padding:8px 0;display:flex;justify-content:center}
-
-/* Actions */
-#actions{display:flex;flex-wrap:wrap;gap:5px;padding:8px;border-top:1px solid var(--border)}
-.action-btn{flex:1;min-width:calc(50% - 3px);padding:9px 5px;font-size:12px;font-weight:700;border-radius:6px}
-.action-btn.roll{background:var(--accent);color:#fff}
-.action-btn.roll:hover{background:var(--accent2)}
-.action-btn.buy{background:var(--green);color:#fff}
-.action-btn.decline{background:var(--card2);color:var(--text2);border:1px solid var(--border)}
-.action-btn.endturn{background:var(--card2);color:var(--text);border:1px solid var(--border)}
-.action-btn.endturn:hover{border-color:var(--green);color:var(--green)}
-.action-btn.bail{background:var(--yellow);color:#000}
-.action-btn.card{background:#8b5cf6;color:#fff}
-
-/* Log tab */
-#log-panel{display:flex;flex-direction:column;gap:4px}
-.log-entry{font-size:11px;color:var(--text2);line-height:1.4;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+/* ─── Extra panel (Log / Props) ─────────────────────────── */
+#extra-tabs{
+  display:flex;
+  border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+.etab{
+  flex:1;padding:5px 0;font-size:11px;font-weight:600;
+  background:none;color:var(--text2);border-radius:0;
+  border-bottom:2px solid transparent;
+}
+.etab.active{color:var(--accent);border-bottom-color:var(--accent)}
+#extra-panel{
+  overflow:hidden;
+  max-height:0;
+  transition:max-height .22s ease;
+  flex-shrink:0;
+}
+#extra-panel.open{max-height:110px}
+#extra-content{overflow-y:auto;max-height:110px;padding:6px 8px}
+#log-panel{display:flex;flex-direction:column;gap:3px}
+.log-entry{font-size:10.5px;color:var(--text2);line-height:1.4;padding:2px 0;border-bottom:1px solid rgba(255,255,255,.04)}
 .log-entry:last-child{color:var(--text);font-weight:500}
-
-/* Props tab */
 #props-list{display:flex;flex-direction:column;gap:5px}
 .prop-item{background:var(--card2);border:1px solid var(--border);border-radius:7px;padding:7px 9px;cursor:pointer;transition:border-color .15s}
 .prop-item:hover{border-color:var(--accent)}
@@ -217,12 +345,66 @@ input:focus{border-color:var(--accent)}
 .prop-action-btn.mortgage{background:var(--red);color:#fff}
 .prop-action-btn.unmortgage{background:#8b5cf6;color:#fff}
 
-/* Turn indicator */
-#turn-indicator{padding:7px 10px;background:var(--card2);border-bottom:1px solid var(--border);font-size:12px;text-align:center;min-height:34px;display:flex;align-items:center;justify-content:center;gap:6px}
-#turn-indicator .ti-name{font-weight:700;color:var(--yellow)}
-#turn-indicator .ti-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+/* ─── Actions ──────────────────────────────────────────── */
+#actions{
+  display:flex;flex-wrap:wrap;gap:5px;
+  padding:6px 8px 8px;
+  border-top:1px solid var(--border);
+  flex-shrink:0;
+}
+.action-btn{flex:1;min-width:calc(50% - 3px);padding:11px 5px;font-size:13px;font-weight:700;border-radius:7px}
+.action-btn.roll{background:linear-gradient(135deg,#2563eb,#4f46e5);color:#fff;box-shadow:0 3px 12px rgba(37,99,235,.35)}
+.action-btn.roll:hover{filter:brightness(1.1)}
+.action-btn.buy{background:var(--green);color:#fff}
+.action-btn.decline{background:var(--card2);color:var(--text2);border:1px solid var(--border)}
+.action-btn.endturn{background:var(--card2);color:var(--text);border:1px solid var(--border)}
+.action-btn.endturn:hover{border-color:var(--green);color:var(--green)}
+.action-btn.bail{background:var(--yellow);color:#000}
+.action-btn.card{background:#8b5cf6;color:#fff}
 
-/* Space popup */
+/* ─── Board Cells ──────────────────────────────────────── */
+.cell{
+  border:1px solid rgba(255,255,255,.08);
+  position:relative;display:flex;flex-direction:column;
+  overflow:hidden;cursor:pointer;transition:filter .12s;
+  background:#0c3d18;
+}
+.cell:hover{filter:brightness(1.2)}
+.color-strip{flex-shrink:0}
+.side-bottom .color-strip,.side-top .color-strip{height:12px;width:100%}
+.side-right .color-strip,.side-left .color-strip{width:12px;height:100%;position:absolute;top:0;bottom:0}
+.side-right .color-strip{right:0}
+.side-left .color-strip{left:0}
+.side-bottom .color-strip{order:-1}
+.side-top .color-strip{order:99}
+.cell-inner{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2px;overflow:hidden;gap:1px}
+.side-right .cell-inner,.side-left .cell-inner{padding:2px 14px 2px 2px}
+.side-left .cell-inner{padding:2px 2px 2px 14px}
+.cell-icon{font-size:13px;line-height:1;flex-shrink:0}
+.cell-name{font-size:5.5px;font-weight:700;text-align:center;color:#e8f5e9;line-height:1.25;word-break:break-word;overflow:hidden}
+.cell-price{font-size:5px;color:#a5f3c8;text-align:center;font-weight:600;white-space:nowrap}
+.side-right .cell-inner{writing-mode:vertical-lr;text-orientation:mixed;transform:rotate(180deg);padding:4px}
+.side-left .cell-inner{writing-mode:vertical-lr;text-orientation:mixed;padding:4px}
+.cell.owned{outline:2px solid;outline-offset:-2px}
+.cell.corner{background:#0c3d18}
+.corner-inner{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:6px}
+.corner-icon{font-size:30px;line-height:1}
+.corner-label-text{font-size:8px;font-weight:800;color:#fff;text-align:center;line-height:1.3;white-space:pre-line}
+.cell.mortgaged::after{content:'ЗАЛОГ';position:absolute;inset:0;background:rgba(0,0,0,.6);color:#ef4444;font-size:6px;font-weight:800;display:flex;align-items:center;justify-content:center;letter-spacing:.5px}
+.house-row{display:flex;gap:1px;justify-content:center;flex-shrink:0;flex-wrap:wrap;min-height:5px}
+.side-bottom .house-row,.side-top .house-row{padding:1px 2px;flex-direction:row}
+.side-right .house-row,.side-left .house-row{position:absolute;top:1px;left:1px;right:13px;flex-direction:column}
+.side-right .house-row{left:13px;right:1px}
+.house-dot{width:5px;height:5px;border-radius:1px;background:#22c55e;flex-shrink:0}
+.house-dot.hotel{background:#ef4444;width:5px;height:7px;border-radius:2px}
+/* Tiny cell position dots */
+.tokens{display:flex;flex-wrap:wrap;gap:1px;padding:1px;justify-content:center;position:absolute;bottom:1px;left:1px;right:1px}
+.cell.corner .tokens{position:absolute;bottom:4px;left:4px;right:4px}
+.token{width:8px;height:8px;border-radius:50%;border:1px solid rgba(0,0,0,.5);flex-shrink:0;box-shadow:0 0 3px rgba(0,0,0,.5)}
+.cell.chance-cell{background:#1a1a3e}
+.cell.chest-cell{background:#1a2e1a}
+
+/* ─── Space Popup ──────────────────────────────────────── */
 #space-popup{position:fixed;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;width:260px;z-index:200;box-shadow:0 8px 32px rgba(0,0,0,.7);display:none}
 #space-popup h3{font-size:14px;margin-bottom:8px;padding-right:24px}
 #space-popup .sp-color{height:7px;border-radius:4px;margin-bottom:10px}
@@ -232,37 +414,17 @@ input:focus{border-color:var(--accent)}
 #popup-close{position:absolute;top:8px;right:10px;background:none;color:var(--text2);font-size:18px;padding:2px 6px;line-height:1;border-radius:4px}
 #popup-close:hover{color:var(--text);background:var(--card2)}
 
-/* Winner overlay */
+/* ─── Winner overlay ───────────────────────────────────── */
 #winner-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:300}
 #winner-box{background:var(--card);border:2px solid var(--yellow);border-radius:16px;padding:30px 24px;text-align:center;max-width:300px;width:90%}
 #winner-box h2{font-size:22px;margin-bottom:8px}
 #winner-box .winner-name{font-size:28px;font-weight:800;color:var(--yellow);margin:10px 0}
 #winner-box p{color:var(--text2);margin-bottom:18px;font-size:13px}
 
-/* Mobile */
-@media(max-width:700px){
-  :root{--cell:40px;--corner:80px}
-  #right-panel{width:230px}
-  .cell-icon{font-size:11px}
-  .corner-icon{font-size:24px}
-}
-@media(max-width:520px){
-  #game-screen{flex-direction:column}
-  #board-wrap{flex:none;height:56vw;min-height:220px}
-  #right-panel{width:100%;border-left:none;border-top:1px solid var(--border);flex:1}
-  :root{--cell:28px;--corner:56px}
-  .cell-name{font-size:4.5px}
-  .cell-icon{font-size:10px}
-  .corner-icon{font-size:18px}
-  .corner-label-text{font-size:6px}
-}
 /* Scrollbar */
-::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar{width:3px;height:3px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
-
-/* Divider */
-.lobby-divider{border:none;border-top:1px solid var(--border);width:100%;max-width:460px}
 </style>
 </head>
 <body>
@@ -274,17 +436,12 @@ input:focus{border-color:var(--accent)}
     <p>Мультиплеер · Реальное время</p>
   </div>
 
-  <!-- Create game -->
   <div class="lobby-card" id="create-card">
     <h2>🎮 Создать игру</h2>
-
-    <!-- Name -->
     <div class="name-input-wrap" style="margin-bottom:16px">
       <span class="name-prefix">👤</span>
       <input type="text" id="player-name-input" placeholder="Ваше имя" maxlength="20"/>
     </div>
-
-    <!-- Player count -->
     <div class="player-setup">
       <div class="stepper-row">
         <div class="stepper-label">
@@ -297,7 +454,6 @@ input:focus{border-color:var(--accent)}
           <button class="stepper-btn" id="humans-plus" onclick="stepHumans(1)">+</button>
         </div>
       </div>
-
       <div class="stepper-row">
         <div class="stepper-label">
           <span class="stepper-icon">🤖</span>
@@ -309,23 +465,16 @@ input:focus{border-color:var(--accent)}
           <button class="stepper-btn" id="ai-plus" onclick="stepAI(1)">+</button>
         </div>
       </div>
-
-      <!-- Players preview -->
       <div id="players-preview" class="players-preview"></div>
-
       <button class="btn-primary" onclick="createGame()">Создать игру</button>
     </div>
   </div>
 
-  <!-- Open games -->
   <div class="lobby-card">
     <h2>🌐 Открытые игры <span id="games-count" style="color:var(--text2);font-size:12px;font-weight:400"></span></h2>
-    <div id="games-list" class="games-list">
-      <div class="no-games">Загрузка...</div>
-    </div>
+    <div id="games-list" class="games-list"><div class="no-games">Загрузка...</div></div>
   </div>
 
-  <!-- Waiting room -->
   <div class="lobby-card hidden" id="waiting-card">
     <h2>⏳ Ждём игроков <span id="waiting-count" style="color:var(--text2);font-size:12px;font-weight:400"></span></h2>
     <div id="waiting-players" class="waiting-players"></div>
@@ -335,33 +484,35 @@ input:focus{border-color:var(--accent)}
 
 <!-- ═══ GAME SCREEN ══════════════════════════════════════════ -->
 <div id="game-screen" class="hidden">
-  <!-- Board -->
+  <!-- Board: full width, square -->
   <div id="board-wrap">
     <div id="board"></div>
+    <!-- Overlay: animated pawn tokens -->
+    <div id="token-overlay"></div>
+    <!-- Overlay: dice animation -->
+    <div id="dice-overlay" class="hidden">
+      <div class="dice-anim-wrap">
+        <div class="die-face" id="die-face-1"></div>
+        <div class="die-face" id="die-face-2"></div>
+      </div>
+    </div>
   </div>
 
-  <!-- Right panel -->
-  <div id="right-panel">
+  <!-- Bottom section -->
+  <div id="bottom-section">
     <div id="turn-indicator">Ожидание...</div>
-
-    <div id="panel-tabs">
-      <button class="tab-btn active" onclick="switchTab('players')">Игроки</button>
-      <button class="tab-btn" onclick="switchTab('log')">Лог</button>
-      <button class="tab-btn" onclick="switchTab('props')">Имущество</button>
+    <div id="dice-bar" class="empty"></div>
+    <div id="players-strip"></div>
+    <div id="extra-tabs">
+      <button class="etab active" onclick="switchETab('log')">📋 Лог</button>
+      <button class="etab" onclick="switchETab('props')">🏠 Имущество</button>
     </div>
-    <div id="panel-content">
-      <div id="tab-players">
-        <div id="dice-area"></div>
-        <div id="players-list"></div>
-      </div>
-      <div id="tab-log" class="hidden">
-        <div id="log-panel"></div>
-      </div>
-      <div id="tab-props" class="hidden">
-        <div id="props-list"></div>
+    <div id="extra-panel">
+      <div id="extra-content">
+        <div id="tab-log"><div id="log-panel"></div></div>
+        <div id="tab-props" class="hidden"><div id="props-list"></div></div>
       </div>
     </div>
-
     <div id="actions"></div>
   </div>
 </div>
@@ -388,60 +539,117 @@ input:focus{border-color:var(--accent)}
 // ═══════════════════════════════════════════════════════════
 // CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════════
-const WS_URL = location.protocol==='https:' ? 'wss://gafrustam.ru/monopoly/ws' : `ws://${location.hostname}:8003/ws`;
-const BOARD_URL = location.protocol==='https:' ? 'https://gafrustam.ru/monopoly/board' : `http://${location.hostname}:8003/board`;
+const WS_URL   = location.protocol==='https:' ? 'wss://gafrustam.ru/monopoly/ws'    : `ws://${location.hostname}:8003/ws`;
+const BOARD_URL= location.protocol==='https:' ? 'https://gafrustam.ru/monopoly/board': `http://${location.hostname}:8003/board`;
 const PID_KEY = 'monopoly_pid';
 const GID_KEY = 'monopoly_gid';
 
 const COLOR_HEX = {
   brown:'#8B4513', lblue:'#5bb8e8', pink:'#e056a0', orange:'#f97316',
-  red:'#ef4444', yellow:'#eab308', green:'#16a34a', dblue:'#3b82f6'
+  red:'#ef4444',   yellow:'#eab308', green:'#16a34a', dblue:'#3b82f6'
 };
-
-// Player colors for previews
 const PLAYER_COLORS = ['#ef4444','#3b82f6','#22c55e','#eab308','#a855f7','#f97316'];
+
+const DICE_FACES = {
+  1:[0,0,0, 0,1,0, 0,0,0],
+  2:[1,0,0, 0,0,0, 0,0,1],
+  3:[1,0,0, 0,1,0, 0,0,1],
+  4:[1,0,1, 0,0,0, 1,0,1],
+  5:[1,0,1, 0,1,0, 1,0,1],
+  6:[1,0,1, 1,0,1, 1,0,1],
+};
 
 let ws = null;
 let myPlayerId = localStorage.getItem(PID_KEY);
 let boardData = [];
 let colorGroups = {};
 let gameState = null;
-let currentTab = 'players';
 let boardBuilt = false;
+let currentETab = 'log';
+let extraOpen = false;
 
 // Stepper state
 let setupHumans = 2;
 let setupAI = 1;
+
+// Animation state
+let overlayTokens = {};     // playerId → DOM element in #token-overlay
+let prevPositions = {};     // playerId → last known position
+let prevDiceRolled = false; // track dice state transitions
+let isAnimating = false;
+
+// ═══════════════════════════════════════════════════════════
+// VIEWPORT HEIGHT FIX
+// ═══════════════════════════════════════════════════════════
+function setVH() {
+  document.documentElement.style.setProperty('--dvh', window.innerHeight * 0.01 + 'px');
+}
+window.addEventListener('resize', () => { setVH(); scaleBoardToFit(); });
+setVH();
+
+// ═══════════════════════════════════════════════════════════
+// SVG PAWN
+// ═══════════════════════════════════════════════════════════
+function pawnSVG(color, w=22, h=26) {
+  // light/shadow variants of the color for 3D effect
+  return `<svg width="${w}" height="${h}" viewBox="0 0 22 26" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <radialGradient id="pg${color.replace('#','')}" cx="40%" cy="30%" r="70%">
+        <stop offset="0%" stop-color="${lighten(color, 40)}"/>
+        <stop offset="100%" stop-color="${darken(color, 25)}"/>
+      </radialGradient>
+    </defs>
+    <!-- Head -->
+    <circle cx="11" cy="6" r="4.5" fill="url(#pg${color.replace('#','')})" stroke="rgba(0,0,0,.25)" stroke-width=".8"/>
+    <!-- Neck -->
+    <rect x="9.5" y="9.5" width="3" height="2.5" rx="1" fill="${darken(color,15)}" stroke="rgba(0,0,0,.2)" stroke-width=".6"/>
+    <!-- Body -->
+    <path d="M5.5 12 Q4.5 17 3.5 22 L18.5 22 Q17.5 17 16.5 12 Q14 11 11 11 Q8 11 5.5 12Z"
+          fill="url(#pg${color.replace('#','')})" stroke="rgba(0,0,0,.25)" stroke-width=".8"/>
+    <!-- Base -->
+    <ellipse cx="11" cy="22.5" rx="6.5" ry="2.5" fill="${darken(color,30)}" stroke="rgba(0,0,0,.3)" stroke-width=".6"/>
+    <!-- Shine -->
+    <ellipse cx="9" cy="5" rx="1.8" ry="1.2" fill="rgba(255,255,255,.35)" transform="rotate(-20,9,5)"/>
+  </svg>`;
+}
+
+function lighten(hex, pct) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.min(255, (n>>16) + Math.round(pct*2.55));
+  const g = Math.min(255, ((n>>8)&0xff) + Math.round(pct*2.55));
+  const b = Math.min(255, (n&0xff) + Math.round(pct*2.55));
+  return `#${((r<<16)|(g<<8)|b).toString(16).padStart(6,'0')}`;
+}
+function darken(hex, pct) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.max(0, (n>>16) - Math.round(pct*2.55));
+  const g = Math.max(0, ((n>>8)&0xff) - Math.round(pct*2.55));
+  const b = Math.max(0, (n&0xff) - Math.round(pct*2.55));
+  return `#${((r<<16)|(g<<8)|b).toString(16).padStart(6,'0')}`;
+}
 
 // ═══════════════════════════════════════════════════════════
 // STEPPER LOGIC
 // ═══════════════════════════════════════════════════════════
 function stepHumans(d) {
   setupHumans = Math.max(1, Math.min(4, setupHumans + d));
-  // Ensure total doesn't exceed 6
   if (setupHumans + setupAI > 6) setupAI = Math.max(0, 6 - setupHumans);
   updateSteppers();
 }
-
 function stepAI(d) {
   setupAI = Math.max(0, Math.min(4, setupAI + d));
   if (setupHumans + setupAI > 6) setupHumans = Math.max(1, 6 - setupAI);
   if (setupHumans + setupAI < 2) setupAI = Math.max(0, 2 - setupHumans);
   updateSteppers();
 }
-
 function updateSteppers() {
   const total = setupHumans + setupAI;
-
   document.getElementById('humans-val').textContent = setupHumans;
   document.getElementById('ai-val').textContent = setupAI;
-
   document.getElementById('humans-minus').disabled = setupHumans <= 1;
   document.getElementById('humans-plus').disabled = setupHumans >= 4 || total >= 6;
   document.getElementById('ai-minus').disabled = setupAI <= 0 || total <= 2;
   document.getElementById('ai-plus').disabled = setupAI >= 4 || total >= 6;
-
-  // Preview chips
   const preview = document.getElementById('players-preview');
   preview.innerHTML = '';
   for (let i = 0; i < setupHumans; i++) {
@@ -468,11 +676,9 @@ function connect() {
   ws.onclose = () => setTimeout(connect, 2000);
   ws.onerror = () => ws.close();
 }
-
 function send(obj) {
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
 }
-
 function handleMsg(msg) {
   switch (msg.type) {
     case 'identified':
@@ -493,7 +699,6 @@ function handleMsg(msg) {
       break;
   }
 }
-
 function tryRejoin() {
   const gid = localStorage.getItem(GID_KEY);
   if (gid) send({ action: 'rejoin_game', game_id: gid });
@@ -508,9 +713,7 @@ async function loadBoard() {
     const d = await r.json();
     boardData = d.board;
     colorGroups = d.color_groups;
-  } catch(e) {
-    console.error('Board load failed', e);
-  }
+  } catch(e) { console.error('Board load failed', e); }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -520,10 +723,7 @@ function renderLobby(games) {
   const list = document.getElementById('games-list');
   const cnt = document.getElementById('games-count');
   cnt.textContent = games.length ? `(${games.length})` : '';
-  if (!games.length) {
-    list.innerHTML = '<div class="no-games">Нет открытых игр</div>';
-    return;
-  }
+  if (!games.length) { list.innerHTML = '<div class="no-games">Нет открытых игр</div>'; return; }
   list.innerHTML = '';
   games.forEach(g => {
     const d = document.createElement('div');
@@ -533,39 +733,32 @@ function renderLobby(games) {
         <div class="owner">${esc(g.owner)}</div>
         <div class="slots">👥 ${g.humans}/${g.max_humans} &nbsp;🤖 ${g.ai}</div>
       </div>
-      ${g.humans < g.max_humans ? `<button class="btn-success" onclick="joinGame('${g.game_id}')">Войти</button>` : '<span style="color:#94a3b8;font-size:0.85rem">Полная</span>'}
-    `;
+      ${g.humans < g.max_humans
+        ? `<button class="btn-success" onclick="joinGame('${g.game_id}')">Войти</button>`
+        : '<span style="color:#94a3b8;font-size:.85rem">Полная</span>'}`;
     list.appendChild(d);
   });
 }
-
 function getPlayerName() {
   return (document.getElementById('player-name-input').value || '').trim() || 'Игрок';
 }
-
 function createGame() {
-  const name = getPlayerName();
-  send({ action: 'create_game', name, max_humans: setupHumans, max_ai: setupAI });
+  send({ action:'create_game', name:getPlayerName(), max_humans:setupHumans, max_ai:setupAI });
 }
-
 function joinGame(game_id) {
-  const name = getPlayerName();
-  send({ action: 'join_game', game_id, name });
+  send({ action:'join_game', game_id, name:getPlayerName() });
 }
-
 function leaveWaiting() {
   localStorage.removeItem(GID_KEY);
   gameState = null;
   showLobbyScreen();
 }
-
 function showLobbyScreen() {
   document.getElementById('lobby-screen').classList.remove('hidden');
   document.getElementById('game-screen').classList.add('hidden');
   document.getElementById('winner-overlay').classList.add('hidden');
   document.getElementById('waiting-card').classList.add('hidden');
 }
-
 function showGameScreen() {
   document.getElementById('lobby-screen').classList.add('hidden');
   document.getElementById('game-screen').classList.remove('hidden');
@@ -576,24 +769,58 @@ function showGameScreen() {
 // ═══════════════════════════════════════════════════════════
 function onGameState(gs) {
   localStorage.setItem(GID_KEY, gs.game_id);
-
-  if (gs.status === 'lobby') {
-    showWaitingRoom(gs);
-    return;
-  }
+  if (gs.status === 'lobby') { showWaitingRoom(gs); return; }
 
   showGameScreen();
+
   if (!boardBuilt && boardData.length) {
     buildBoard();
     boardBuilt = true;
     scaleBoardToFit();
+    // init positions
+    gs.players.forEach(p => { prevPositions[p.id] = p.position; });
+    buildTokenOverlay(gs);
+    updateOverlayTokens(gs, false);
   }
+
+  const justRolled = gs.dice_rolled && !prevDiceRolled;
+  prevDiceRolled = gs.dice_rolled;
+
+  if (justRolled && gs.dice && gs.dice.length === 2) {
+    handleRollAnimation(gs);
+  } else {
+    applyGameState(gs);
+  }
+}
+
+async function handleRollAnimation(gs) {
+  // Stop dice spinner and reveal result
+  stopDiceSpinner(gs.dice[0], gs.dice[1]);
+
+  // Animate token movements step-by-step
+  await animateMovements(gs);
+
+  // Update prev positions
+  gs.players.forEach(p => { prevPositions[p.id] = p.position; });
+
+  applyGameState(gs);
+}
+
+function applyGameState(gs) {
+  gs.players.forEach(p => { prevPositions[p.id] = p.position; });
   renderBoard(gs);
-  renderPlayers(gs);
+  updateOverlayTokens(gs, true);
+  renderPlayersStrip(gs);
   renderActions(gs);
   renderLog(gs.log || []);
   renderProps(gs);
   renderTurnIndicator(gs);
+
+  if (gs.dice_rolled && gs.dice && gs.dice.length === 2) {
+    renderDiceBar(gs.dice[0], gs.dice[1]);
+  } else {
+    clearDiceBar();
+  }
   if (gs.status === 'finished' && gs.winner) showWinner(gs);
 }
 
@@ -607,36 +834,21 @@ function showWaitingRoom(gs) {
   gs.players.forEach(p => {
     const d = document.createElement('div');
     d.className = 'waiting-player';
-    d.innerHTML = `<div class="color-dot" style="background:${p.color}"></div>${esc(p.name)}${p.is_ai?'<span class="ai-badge" style="margin-left:6px">ИИ</span>':'<span class="status-dot" style="margin-left:6px"></span>'}`;
+    d.innerHTML = `<div class="color-dot" style="background:${p.color}"></div>${esc(p.name)}${p.is_ai
+      ?'<span style="margin-left:6px;font-size:10px;background:var(--accent);color:#fff;border-radius:3px;padding:1px 4px">ИИ</span>'
+      :'<span class="status-dot" style="margin-left:6px"></span>'}`;
     wp.appendChild(d);
   });
 }
 
 // ═══════════════════════════════════════════════════════════
-// BOARD — GRID POSITIONS
+// BOARD GRID POSITIONS
 // ═══════════════════════════════════════════════════════════
-/*
-  11×11 CSS Grid:
-    col 1 = --corner,  col 2-10 = 9×--cell,  col 11 = --corner
-    row 1 = --corner,  row 2-10 = 9×--cell,  row 11 = --corner
-
-  Board layout (standard monopoly, clockwise from GO):
-    GO  = col 1,  row 11   (bottom-left corner)
-    1–9 = col 2-10, row 11  (bottom row, left→right)
-    10  = col 11, row 11   (bottom-right corner)
-    11–19 = col 11, row 10-2 (right col, bottom→top)
-    20  = col 11, row 1    (top-right corner)
-    21–29 = col 10-2, row 1  (top row, right→left)
-    30  = col 1,  row 1    (top-left corner)
-    31–39 = col 1,  row 2-10 (left col, top→bottom)
-    Center = col 2-10, row 2-10
-*/
 function spaceGridPos(id) {
   if (id === 0)  return {col:1,  row:11, side:'corner'};
   if (id === 10) return {col:11, row:11, side:'corner'};
   if (id === 20) return {col:11, row:1,  side:'corner'};
   if (id === 30) return {col:1,  row:1,  side:'corner'};
-
   if (id >= 1  && id <= 9)  return {col:id+1,       row:11,         side:'bottom'};
   if (id >= 11 && id <= 19) return {col:11,          row:11-(id-10), side:'right'};
   if (id >= 21 && id <= 29) return {col:11-(id-20),  row:1,          side:'top'};
@@ -644,17 +856,16 @@ function spaceGridPos(id) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// BOARD BUILDING
+// BUILD BOARD
 // ═══════════════════════════════════════════════════════════
 function buildBoard() {
   const board = document.getElementById('board');
   board.innerHTML = '';
   window._cells = {};
 
-  // Center label
   const center = document.createElement('div');
   center.id = 'board-center';
-  center.style.cssText = 'grid-column:2/11;grid-row:2/11;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0c3d18;gap:6px';
+  center.style.cssText = 'grid-column:2/11;grid-row:2/11;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0c3d18;gap:6px;pointer-events:none';
   center.innerHTML = `
     <div style="font-size:11px;color:#4ade80;font-weight:600;letter-spacing:2px;text-transform:uppercase;opacity:.7">Казань</div>
     <div style="font-size:32px;font-weight:900;background:linear-gradient(135deg,#4ade80,#22d3ee);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;letter-spacing:1px">МОНОПОЛИЯ</div>
@@ -665,7 +876,6 @@ function buildBoard() {
   boardData.forEach(space => {
     const pos = spaceGridPos(space.id);
     if (!pos) return;
-
     const cell = document.createElement('div');
     let classes = 'cell';
     if (pos.side === 'corner') classes += ' corner';
@@ -676,7 +886,6 @@ function buildBoard() {
     cell.id = `cell-${space.id}`;
     cell.dataset.id = space.id;
     cell.style.cssText = `grid-column:${pos.col};grid-row:${pos.row}`;
-
     cell.innerHTML = pos.side === 'corner' ? cornerHTML(space) : spaceHTML(space, pos.side);
     cell.addEventListener('click', () => showSpacePopup(space, cell));
     board.appendChild(cell);
@@ -693,20 +902,21 @@ function scaleBoardToFit() {
   requestAnimationFrame(() => {
     const bw = board.offsetWidth;
     const bh = board.offsetHeight;
-    const ww = wrap.clientWidth - 12;
-    const wh = wrap.clientHeight - 12;
+    const ww = wrap.clientWidth  - 2;
+    const wh = wrap.clientHeight - 2;
     if (bw > 0) {
       const scale = Math.min(1, ww / bw, wh / bh);
-      if (scale < 0.999) board.style.transform = `scale(${scale.toFixed(4)})`;
+      board.style.transform = `scale(${scale.toFixed(4)})`;
     }
+    // Reposition overlay tokens after scale changes
+    if (gameState) updateOverlayTokens(gameState, false);
   });
 }
 
-// ─── Corner HTML ─────────────────────────────────────────
 const CORNER_DATA = {
-  0:  {icon:'🚦', label:'СТАРТ',       sub:'Получите\n200₽'},
-  10: {icon:'🚔', label:'ТЮРЬМА',      sub:'Просто\nвизит'},
-  20: {icon:'🅿️',  label:'СТОЯНКА',    sub:'Бесплатно'},
+  0:  {icon:'🚦', label:'СТАРТ',         sub:'Получите\n200₽'},
+  10: {icon:'🚔', label:'ТЮРЬМА',        sub:'Просто\nвизит'},
+  20: {icon:'🅿️',  label:'СТОЯНКА',      sub:'Бесплатно'},
   30: {icon:'👮', label:'ИДИ В\nТЮРЬМУ', sub:''},
 };
 function cornerHTML(space) {
@@ -714,66 +924,41 @@ function cornerHTML(space) {
   return `<div class="corner-inner">
     <div class="corner-icon">${d.icon}</div>
     <div class="corner-label-text">${d.label}</div>
-    ${d.sub ? `<div style="font-size:6px;color:#6ee7b7;text-align:center;line-height:1.3;white-space:pre-line">${d.sub}</div>` : ''}
+    ${d.sub?`<div style="font-size:6px;color:#6ee7b7;text-align:center;line-height:1.3;white-space:pre-line">${d.sub}</div>`:''}
     <div class="tokens" id="tokens-${space.id}"></div>
   </div>`;
 }
 
-// ─── Space HTML ──────────────────────────────────────────
 const SPACE_ICONS = {
-  chance:   {icon:'❓', bg:'#1e1b4b'},
-  chest:    {icon:'🎁', bg:'#1a2e1a'},
-  railroad: {icon:'🚇', bg:'#1e293b'},
-  tax:      {icon:'💸', bg:'#2d1b1b'},
+  chance:{icon:'❓',bg:'#1e1b4b'}, chest:{icon:'🎁',bg:'#1a2e1a'},
+  railroad:{icon:'🚇',bg:'#1e293b'}, tax:{icon:'💸',bg:'#2d1b1b'},
 };
-const UTILITY_ICONS = {
-  'Таттелеком':    '📞',
-  'Татэнергосбыт': '⚡',
-};
+const UTILITY_ICONS = { 'Таттелеком':'📞', 'Татэнергосбыт':'⚡' };
 
 function spaceHTML(space, side) {
   const colorHex = space.color ? (COLOR_HEX[space.color] || '#888') : null;
   const info = SPACE_ICONS[space.type];
-
-  let icon = '';
-  let bgStyle = '';
-  let nameStr = '';
-
-  if (info) {
-    icon = info.icon;
-    bgStyle = `background:${info.bg}`;
-  } else if (space.type === 'utility') {
-    const uicon = Object.entries(UTILITY_ICONS).find(([k]) => space.name.includes(k));
-    icon = uicon ? uicon[1] : '🔧';
-    bgStyle = 'background:#1c2419';
+  let icon='', bgStyle='';
+  if (info) { icon=info.icon; bgStyle=`background:${info.bg}`; }
+  else if (space.type==='utility') {
+    const u = Object.entries(UTILITY_ICONS).find(([k])=>space.name.includes(k));
+    icon=u?u[1]:'🔧'; bgStyle='background:#1c2419';
   }
-
-  if (!icon) {
-    // Property — show short name
-    nameStr = shortenName(space.name);
-  }
-
+  const nameStr = !icon ? shortenName(space.name) : '';
   const priceStr = space.price ? `${space.price}₽` : '';
-
-  // For side cells, we need to build the inner content carefully
-  // Writing-mode for right/left is handled via CSS class
   const inner = icon
-    ? `<div class="cell-icon">${icon}</div>${priceStr ? `<div class="cell-price">${priceStr}</div>` : ''}`
-    : `<div class="cell-name">${esc(nameStr)}</div>${priceStr ? `<div class="cell-price">${priceStr}</div>` : ''}`;
-
-  return `${colorHex ? `<div class="color-strip" style="background:${colorHex}"></div>` : ''}
-    <div class="cell-inner" ${bgStyle ? `style="${bgStyle}"` : ''}>${inner}</div>
+    ? `<div class="cell-icon">${icon}</div>${priceStr?`<div class="cell-price">${priceStr}</div>`:''}`
+    : `<div class="cell-name">${esc(nameStr)}</div>${priceStr?`<div class="cell-price">${priceStr}</div>`:''}`;
+  return `${colorHex?`<div class="color-strip" style="background:${colorHex}"></div>`:''}
+    <div class="cell-inner"${bgStyle?` style="${bgStyle}"`:''}>${inner}</div>
     <div class="house-row" id="houses-${space.id}"></div>
     <div class="tokens" id="tokens-${space.id}"></div>`;
 }
 
 function shortenName(name) {
-  return name
-    .replace(/^ул\.\s*/,'')
-    .replace(/^пр\.\s*/,'')
-    .replace(/^пл\.\s*/,'')
-    .replace(/^ст\. м\.\s*/,'')
-    .replace(/^пр-т\s*/,'');
+  return (name||'')
+    .replace(/^ул\.\s*/,'').replace(/^пр\.\s*/,'').replace(/^пл\.\s*/,'')
+    .replace(/^ст\. м\.\s*/,'').replace(/^пр-т\s*/,'');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -781,22 +966,20 @@ function shortenName(name) {
 // ═══════════════════════════════════════════════════════════
 function renderBoard(gs) {
   if (!boardBuilt) return;
-
-  document.querySelectorAll('.tokens').forEach(t => t.innerHTML = '');
-  document.querySelectorAll('.house-row').forEach(h => h.innerHTML = '');
+  document.querySelectorAll('.tokens').forEach(t => t.innerHTML='');
+  document.querySelectorAll('.house-row').forEach(h => h.innerHTML='');
   document.querySelectorAll('.cell').forEach(c => {
     c.classList.remove('mortgaged','owned');
-    c.style.outlineColor = '';
+    c.style.outlineColor='';
   });
 
-  // Tokens
+  // Small position dots in cells
   const byPos = {};
   gs.players.forEach(p => {
     if (p.bankrupt) return;
     if (!byPos[p.position]) byPos[p.position] = [];
     byPos[p.position].push(p);
   });
-  const cp = gs.players[gs.current_player_idx];
   Object.entries(byPos).forEach(([pos, players]) => {
     const container = document.getElementById(`tokens-${pos}`);
     if (!container) return;
@@ -805,10 +988,6 @@ function renderBoard(gs) {
       tok.className = 'token';
       tok.style.background = p.color;
       tok.title = p.name;
-      if (cp && p.id === cp.id) {
-        tok.style.border = '2px solid #fff';
-        tok.style.boxShadow = `0 0 5px ${p.color}`;
-      }
       container.appendChild(tok);
     });
   });
@@ -819,11 +998,9 @@ function renderBoard(gs) {
       const pos = parseInt(posStr);
       const cell = window._cells[pos];
       if (!cell) return;
-
       if (info.mortgaged) cell.classList.add('mortgaged');
       cell.classList.add('owned');
       cell.style.outlineColor = p.color;
-
       const hr = document.getElementById(`houses-${pos}`);
       if (hr && info.houses > 0) {
         if (info.houses === 5) {
@@ -831,7 +1008,7 @@ function renderBoard(gs) {
           dot.className = 'house-dot hotel';
           hr.appendChild(dot);
         } else {
-          for (let i = 0; i < info.houses; i++) {
+          for (let i=0; i<info.houses; i++) {
             const dot = document.createElement('div');
             dot.className = 'house-dot';
             hr.appendChild(dot);
@@ -843,69 +1020,239 @@ function renderBoard(gs) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// PLAYERS LIST
+// TOKEN OVERLAY
 // ═══════════════════════════════════════════════════════════
-function renderPlayers(gs) {
-  const cp = gs.players[gs.current_player_idx];
-  const list = document.getElementById('players-list');
-  list.innerHTML = '';
+function buildTokenOverlay(gs) {
+  const overlay = document.getElementById('token-overlay');
+  overlay.innerHTML = '';
+  overlayTokens = {};
+  gs.players.forEach(p => ensureOverlayToken(p));
+}
+
+function ensureOverlayToken(player) {
+  const overlay = document.getElementById('token-overlay');
+  if (!overlay) return null;
+  if (overlayTokens[player.id]) return overlayTokens[player.id];
+  const el = document.createElement('div');
+  el.className = 'ov-token';
+  el.id = `ov-tok-${player.id}`;
+  el.innerHTML = pawnSVG(player.color, 20, 24);
+  overlay.appendChild(el);
+  overlayTokens[player.id] = el;
+  return el;
+}
+
+function getCellCenter(position) {
+  const cell = window._cells[position];
+  if (!cell) return null;
+  const wrap = document.getElementById('board-wrap');
+  if (!wrap) return null;
+  const wrapRect = wrap.getBoundingClientRect();
+  const cellRect = cell.getBoundingClientRect();
+  return {
+    x: cellRect.left - wrapRect.left + cellRect.width / 2,
+    y: cellRect.top  - wrapRect.top  + cellRect.height / 2,
+  };
+}
+
+function positionToken(el, position, offX=0, offY=0, animate=true) {
+  const c = getCellCenter(position);
+  if (!c) return;
+  if (!animate) el.style.transition = 'none';
+  el.style.left = (c.x + offX) + 'px';
+  el.style.top  = (c.y + offY) + 'px';
+  if (!animate) requestAnimationFrame(() => {
+    el.style.transition = 'left .22s cubic-bezier(.4,0,.2,1), top .22s cubic-bezier(.4,0,.2,1)';
+  });
+}
+
+function updateOverlayTokens(gs, withArrival=false) {
+  if (!boardBuilt) return;
+
+  // Count players per position for stacking offset
+  const byPos = {};
+  gs.players.forEach(p => {
+    if (p.bankrupt) return;
+    if (!byPos[p.position]) byPos[p.position] = [];
+    byPos[p.position].push(p.id);
+  });
+
+  gs.players.forEach(p => {
+    const el = ensureOverlayToken(p);
+    if (!el) return;
+    el.classList.toggle('bankrupt', !!p.bankrupt);
+
+    const playersHere = byPos[p.position] || [];
+    const idx = playersHere.indexOf(p.id);
+    const total = playersHere.length;
+    let ox=0, oy=0;
+    if (total > 1) {
+      const a = (idx / total) * Math.PI * 2 - Math.PI/2;
+      const r = 7;
+      ox = Math.cos(a)*r;
+      oy = Math.sin(a)*r;
+    }
+
+    positionToken(el, p.position, ox, oy, !withArrival);
+    if (withArrival) {
+      el.classList.remove('just-arrived');
+      void el.offsetWidth;
+      el.classList.add('just-arrived');
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// TOKEN STEP-BY-STEP ANIMATION
+// ═══════════════════════════════════════════════════════════
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function animateMovements(gs) {
+  if (!boardBuilt) return;
+  const moves = [];
+  gs.players.forEach(p => {
+    if (p.bankrupt) return;
+    const prev = prevPositions[p.id];
+    if (prev !== undefined && prev !== p.position) {
+      moves.push({ player: p, from: prev, to: p.position });
+    }
+  });
+  if (!moves.length) return;
+
+  isAnimating = true;
+  // Animate all moved players in parallel
+  await Promise.all(moves.map(m => animatePlayerSteps(m.player, m.from, m.to)));
+  isAnimating = false;
+}
+
+async function animatePlayerSteps(player, from, to) {
+  const el = ensureOverlayToken(player);
+  if (!el) return;
+
+  const steps = (to - from + 40) % 40;
+  if (steps === 0) return;
+
+  // Fast step speed
+  const stepMs = Math.max(60, Math.min(140, 900 / steps));
+
+  // Count co-residents at current pos for offset
+  function getOffset(pos) {
+    // Simple: use angle 0 for now during animation
+    return {ox:0, oy:0};
+  }
+
+  for (let i = 1; i <= steps; i++) {
+    const pos = (from + i) % 40;
+    const c = getCellCenter(pos);
+    if (c) {
+      el.style.transition = `left ${stepMs*.9}ms ease, top ${stepMs*.9}ms ease`;
+      el.style.left = c.x + 'px';
+      el.style.top  = c.y + 'px';
+    }
+    await sleep(stepMs);
+  }
+
+  // Arrival bounce
+  el.classList.remove('just-arrived');
+  void el.offsetWidth;
+  el.classList.add('just-arrived');
+  el.style.transition = 'left .22s cubic-bezier(.4,0,.2,1), top .22s cubic-bezier(.4,0,.2,1)';
+}
+
+// ═══════════════════════════════════════════════════════════
+// DICE ANIMATION
+// ═══════════════════════════════════════════════════════════
+let diceSpinnerInterval = null;
+
+function dieFaceInnerHTML(n, cls='die-pip') {
+  const pips = DICE_FACES[n] || DICE_FACES[1];
+  return pips.map(p => `<div class="${cls}${p ? '' : ' empty'}"></div>`).join('');
+}
+
+function startDiceSpinner() {
+  const overlay = document.getElementById('dice-overlay');
+  const f1 = document.getElementById('die-face-1');
+  const f2 = document.getElementById('die-face-2');
+  overlay.classList.remove('hidden');
+
+  f1.classList.add('rolling');
+  f2.classList.add('rolling');
+
+  let t=0;
+  diceSpinnerInterval = setInterval(() => {
+    t++;
+    f1.innerHTML = dieFaceInnerHTML(Math.ceil(Math.random()*6));
+    f2.innerHTML = dieFaceInnerHTML(Math.ceil(Math.random()*6));
+  }, 75);
+}
+
+function stopDiceSpinner(d1, d2) {
+  clearInterval(diceSpinnerInterval);
+  const overlay = document.getElementById('dice-overlay');
+  const f1 = document.getElementById('die-face-1');
+  const f2 = document.getElementById('die-face-2');
+
+  f1.classList.remove('rolling');
+  f2.classList.remove('rolling');
+
+  f1.innerHTML = dieFaceInnerHTML(d1);
+  f2.innerHTML = dieFaceInnerHTML(d2);
+  f1.classList.add('reveal');
+  f2.classList.add('reveal');
+
+  setTimeout(() => {
+    f1.classList.remove('reveal');
+    f2.classList.remove('reveal');
+    overlay.classList.add('hidden');
+  }, 1400);
+}
+
+// ─── Dice bar below turn indicator ───────────────────────
+function barDieHTML(n) {
+  const pips = DICE_FACES[n] || DICE_FACES[1];
+  return `<div class="bar-die popped">${pips.map(p=>`<div class="bar-pip${p?'':' empty'}"></div>`).join('')}</div>`;
+}
+function renderDiceBar(d1, d2) {
+  const bar = document.getElementById('dice-bar');
+  const isDouble = d1 === d2;
+  bar.className = '';
+  bar.innerHTML = `
+    ${barDieHTML(d1)}${barDieHTML(d2)}
+    <span style="font-size:11px;color:var(--text2)">= <b style="color:var(--text)">${d1+d2}</b>${isDouble?' <span style="color:var(--yellow);font-weight:700">Дубль!</span>':''}</span>`;
+  // Remove pop class after animation
+  setTimeout(() => bar.querySelectorAll('.popped').forEach(el => el.classList.remove('popped')), 400);
+}
+function clearDiceBar() {
+  const bar = document.getElementById('dice-bar');
+  bar.className = 'empty';
+  bar.innerHTML = '';
+}
+
+// ═══════════════════════════════════════════════════════════
+// PLAYERS STRIP
+// ═══════════════════════════════════════════════════════════
+function renderPlayersStrip(gs) {
+  const strip = document.getElementById('players-strip');
+  strip.innerHTML = '';
   gs.players.forEach((p, i) => {
     const isActive = i === gs.current_player_idx;
-    const d = document.createElement('div');
-    d.className = 'player-card' + (isActive ? ' active-player' : '') + (p.bankrupt ? ' bankrupt' : '');
     const pos = boardData[p.position];
-    d.innerHTML = `
-      <div class="player-color" style="background:${p.color}"></div>
-      <div class="player-info">
-        <div class="player-name">
-          ${esc(p.name)}
-          ${isActive ? '<span class="current-badge">ХОД</span>' : ''}
-          ${p.is_ai ? '<span class="ai-badge">ИИ</span>' : ''}
-          ${p.bankrupt ? '<span style="font-size:9px;color:var(--red);margin-left:3px">БАНКРОТ</span>' : ''}
-        </div>
-        <div class="player-money">${p.money}₽</div>
-        ${p.in_jail ? `<div style="font-size:10px;color:var(--yellow)">🚔 В тюрьме (${p.jail_turns}/3)</div>` : ''}
-        ${p.jail_free_cards > 0 ? `<div style="font-size:9px;color:#a78bfa">🃏 Карта x${p.jail_free_cards}</div>` : ''}
-        <div style="font-size:10px;color:var(--text2);margin-top:1px">${pos?.name||''}</div>
-      </div>
-    `;
-    list.appendChild(d);
+    const card = document.createElement('div');
+    card.className = 'strip-card' + (isActive?' active-sc':'') + (p.bankrupt?' bankrupt-sc':'');
+
+    let posName = shortenName(pos?.name || '');
+    if (!posName) posName = p.in_jail ? '🚔 Тюрьма' : 'СТАРТ';
+
+    card.innerHTML = `
+      <div class="strip-pawn">${pawnSVG(p.color, 22, 26)}</div>
+      <div class="strip-name">${esc(p.name)}</div>
+      ${isActive  ? '<div class="strip-badge turn">ХОД</div>' : ''}
+      ${p.is_ai && !isActive ? '<div class="strip-badge ai">ИИ</div>' : ''}
+      ${p.in_jail && !isActive ? '<div class="strip-badge jail">🚔</div>' : ''}
+      <div class="strip-money">${p.money}₽</div>
+      <div class="strip-pos">${esc(posName)}</div>`;
+    strip.appendChild(card);
   });
-  renderDice(gs);
-}
-
-// ═══════════════════════════════════════════════════════════
-// DICE
-// ═══════════════════════════════════════════════════════════
-function dieHTML(n) {
-  // Pip layout for faces 1-6 (array of 9 cells: 3×3 grid)
-  const faces = {
-    1: [0,0,0, 0,1,0, 0,0,0],
-    2: [1,0,0, 0,0,0, 0,0,1],
-    3: [1,0,0, 0,1,0, 0,0,1],
-    4: [1,0,1, 0,0,0, 1,0,1],
-    5: [1,0,1, 0,1,0, 1,0,1],
-    6: [1,0,1, 1,0,1, 1,0,1],
-  };
-  const pips = faces[n] || faces[1];
-  const dots = pips.map(p =>
-    `<div style="width:9px;height:9px;border-radius:50%;background:${p?'#1e293b':'transparent'}"></div>`
-  ).join('');
-  return `<div style="width:46px;height:46px;background:#fff;border-radius:9px;display:grid;grid-template-columns:repeat(3,1fr);align-items:center;justify-items:center;padding:5px;box-shadow:0 2px 10px rgba(0,0,0,.5);border:1px solid rgba(0,0,0,.1)">${dots}</div>`;
-}
-
-function renderDice(gs) {
-  const area = document.getElementById('dice-area');
-  if (gs.dice_rolled && gs.dice && gs.dice.length === 2) {
-    const isDouble = gs.dice[0] === gs.dice[1];
-    area.innerHTML = `
-      <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
-        <div style="display:flex;gap:10px">${dieHTML(gs.dice[0])}${dieHTML(gs.dice[1])}</div>
-        <div style="font-size:11px;color:var(--text2)">= <b style="color:var(--text)">${gs.dice[0]+gs.dice[1]}</b>${isDouble?' · <span style="color:var(--yellow)">Дубль!</span>':''}</div>
-      </div>`;
-  } else {
-    area.innerHTML = '';
-  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -919,8 +1266,7 @@ function renderTurnIndicator(gs) {
   const isMe = cp.id === myPlayerId;
   ti.innerHTML = `
     <div class="ti-dot" style="background:${cp.color}"></div>
-    <span>Ход: <span class="ti-name">${esc(cp.name)}</span>${isMe ? ' (ваш ход)' : ''}</span>
-  `;
+    <span>Ход: <span class="ti-name">${esc(cp.name)}</span>${isMe?' (ваш ход)':''}</span>`;
   ti.style.color = isMe ? 'var(--yellow)' : 'var(--text2)';
 }
 
@@ -931,7 +1277,6 @@ function renderActions(gs) {
   const area = document.getElementById('actions');
   area.innerHTML = '';
   if (gs.status !== 'playing') return;
-
   const cp = gs.players[gs.current_player_idx];
   if (!cp || cp.id !== myPlayerId) return;
 
@@ -940,18 +1285,18 @@ function renderActions(gs) {
 
   if (phase === 'roll') {
     if (cp.in_jail) {
-      btns.push({label:'🎲 Бросить', cls:'roll', action:'roll_dice'});
-      if (cp.money >= 50) btns.push({label:'💰 Залог 50₽', cls:'bail', action:'pay_bail'});
-      if (cp.jail_free_cards > 0) btns.push({label:'🃏 Карта', cls:'card', action:'use_card'});
+      btns.push({label:'🎲 Бросить', cls:'roll', fn:()=>{ startDiceSpinner(); send({action:'roll_dice'}); }});
+      if (cp.money>=50) btns.push({label:'💰 Залог 50₽', cls:'bail', action:'pay_bail'});
+      if (cp.jail_free_cards>0) btns.push({label:'🃏 Карта', cls:'card', action:'use_card'});
     } else {
-      btns.push({label:'🎲 Бросить кубики', cls:'roll', action:'roll_dice'});
+      btns.push({label:'🎲 Бросить кубики', cls:'roll', fn:()=>{ startDiceSpinner(); send({action:'roll_dice'}); }});
     }
   }
-  if (phase === 'buy_decision' && gs.pending) {
+  if (phase==='buy_decision' && gs.pending) {
     btns.push({label:`🏠 Купить за ${gs.pending.price}₽`, cls:'buy', action:'buy'});
     btns.push({label:'Отказаться', cls:'decline', action:'decline_buy'});
   }
-  if (phase === 'end_turn') {
+  if (phase==='end_turn') {
     btns.push({label:'✓ Завершить ход', cls:'endturn', action:'end_turn'});
   }
 
@@ -959,9 +1304,30 @@ function renderActions(gs) {
     const btn = document.createElement('button');
     btn.className = `action-btn ${b.cls}`;
     btn.textContent = b.label;
-    btn.onclick = () => send({ action: b.action });
+    btn.onclick = b.fn ? b.fn : () => send({ action: b.action });
     area.appendChild(btn);
   });
+}
+
+// ═══════════════════════════════════════════════════════════
+// EXTRA TABS (Log / Props)
+// ═══════════════════════════════════════════════════════════
+function switchETab(tab) {
+  currentETab = tab;
+  const panel = document.getElementById('extra-panel');
+
+  if (!extraOpen) {
+    extraOpen = true;
+    panel.classList.add('open');
+  }
+
+  document.querySelectorAll('.etab').forEach((b, i) => {
+    b.classList.toggle('active', ['log','props'][i] === tab);
+  });
+  ['log','props'].forEach(t => {
+    document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== tab);
+  });
+  if (tab==='log' && gameState) renderLog(gameState.log||[]);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -970,7 +1336,7 @@ function renderActions(gs) {
 function renderLog(log) {
   const panel = document.getElementById('log-panel');
   panel.innerHTML = '';
-  log.slice(-25).forEach(entry => {
+  log.slice(-20).forEach(entry => {
     const d = document.createElement('div');
     d.className = 'log-entry';
     d.textContent = entry;
@@ -985,16 +1351,11 @@ function renderLog(log) {
 function renderProps(gs) {
   const list = document.getElementById('props-list');
   list.innerHTML = '';
-
   const me = gs.players.find(p => p.id === myPlayerId);
-  if (!me) {
-    list.innerHTML = '<div style="color:var(--text2);font-size:12px">Вы не в этой игре</div>';
-    return;
-  }
+  if (!me) { list.innerHTML = '<div style="color:var(--text2);font-size:12px">Вы не в этой игре</div>'; return; }
 
   const isMyTurn = gs.players[gs.current_player_idx]?.id === myPlayerId;
   const myProps = Object.entries(me.properties || {});
-
   if (!myProps.length) {
     list.innerHTML = '<div style="color:var(--text2);font-size:12px;padding:8px 0">У вас нет имущества</div>';
     return;
@@ -1004,61 +1365,51 @@ function renderProps(gs) {
     const pos = parseInt(posStr);
     const space = boardData[pos];
     if (!space) return;
-
-    const hex = space.color ? (COLOR_HEX[space.color] || '#888') : '#555';
-    const houseLabel = info.houses === 5 ? 'Отель' : info.houses > 0 ? `${info.houses} дом` : '';
-    const mortLabel = info.mortgaged ? 'Залог' : '';
-
+    const hex = space.color ? (COLOR_HEX[space.color]||'#888') : '#555';
+    const houseLabel = info.houses===5?'Отель':info.houses>0?`${info.houses} дом`:'';
     const item = document.createElement('div');
     item.className = 'prop-item';
     item.innerHTML = `
       <div class="prop-item-top">
         <div class="prop-color-bar" style="background:${hex}"></div>
         <div class="prop-item-name">${esc(space.name)}</div>
-        ${houseLabel ? `<span class="prop-item-houses">${houseLabel}</span>` : ''}
-        ${mortLabel ? `<span class="prop-item-mortgaged">${mortLabel}</span>` : ''}
+        ${houseLabel?`<span class="prop-item-houses">${houseLabel}</span>`:''}
+        ${info.mortgaged?'<span class="prop-item-mortgaged">Залог</span>':''}
       </div>
-      <div class="prop-actions" id="prop-actions-${pos}"></div>
-    `;
+      <div class="prop-actions" id="prop-actions-${pos}"></div>`;
 
     const actArea = item.querySelector(`#prop-actions-${pos}`);
-
-    if (isMyTurn && space.type === 'property' && !info.mortgaged) {
-      if (info.houses < 5) {
-        const btn = document.createElement('button');
-        btn.className = 'prop-action-btn build';
-        btn.textContent = `+🏠 ${space.house_cost}₽`;
-        btn.onclick = e => { e.stopPropagation(); send({action:'build_house',position:pos}); };
+    if (isMyTurn && space.type==='property' && !info.mortgaged) {
+      if (info.houses<5) {
+        const btn=document.createElement('button');btn.className='prop-action-btn build';
+        btn.textContent=`+🏠 ${space.house_cost}₽`;
+        btn.onclick=e=>{e.stopPropagation();send({action:'build_house',position:pos})};
         actArea.appendChild(btn);
       }
-      if (info.houses > 0) {
-        const btn = document.createElement('button');
-        btn.className = 'prop-action-btn sell';
-        btn.textContent = `-🏠 ${Math.floor(space.house_cost/2)}₽`;
-        btn.onclick = e => { e.stopPropagation(); send({action:'sell_house',position:pos}); };
+      if (info.houses>0) {
+        const btn=document.createElement('button');btn.className='prop-action-btn sell';
+        btn.textContent=`-🏠 ${Math.floor(space.house_cost/2)}₽`;
+        btn.onclick=e=>{e.stopPropagation();send({action:'sell_house',position:pos})};
         actArea.appendChild(btn);
       }
     }
     if (isMyTurn) {
-      if (!info.mortgaged && info.houses === 0) {
-        const btn = document.createElement('button');
-        btn.className = 'prop-action-btn mortgage';
-        btn.textContent = `Залог ${space.mortgage_value||0}₽`;
-        btn.onclick = e => { e.stopPropagation(); send({action:'mortgage',position:pos}); };
+      if (!info.mortgaged && info.houses===0) {
+        const btn=document.createElement('button');btn.className='prop-action-btn mortgage';
+        btn.textContent=`Залог ${space.mortgage_value||0}₽`;
+        btn.onclick=e=>{e.stopPropagation();send({action:'mortgage',position:pos})};
         actArea.appendChild(btn);
       }
       if (info.mortgaged) {
-        const btn = document.createElement('button');
-        btn.className = 'prop-action-btn unmortgage';
-        btn.textContent = `Выкуп ${Math.floor((space.mortgage_value||0)*1.1)}₽`;
-        btn.onclick = e => { e.stopPropagation(); send({action:'unmortgage',position:pos}); };
+        const btn=document.createElement('button');btn.className='prop-action-btn unmortgage';
+        btn.textContent=`Выкуп ${Math.floor((space.mortgage_value||0)*1.1)}₽`;
+        btn.onclick=e=>{e.stopPropagation();send({action:'unmortgage',position:pos})};
         actArea.appendChild(btn);
       }
     }
-
     item.addEventListener('click', () => {
       const cell = window._cells?.[pos];
-      if (cell) cell.scrollIntoView({behavior:'smooth', block:'center'});
+      if (cell) cell.scrollIntoView({behavior:'smooth',block:'center'});
       showSpacePopup(space, cell);
     });
     list.appendChild(item);
@@ -1071,118 +1422,81 @@ function renderProps(gs) {
 function showSpacePopup(space, cellEl) {
   const popup = document.getElementById('space-popup');
   document.getElementById('popup-name').textContent = space.name;
-
   const colorBar = document.getElementById('popup-color-bar');
-  if (space.color) {
-    colorBar.style.background = COLOR_HEX[space.color] || '#888';
-    colorBar.style.display = 'block';
-  } else {
-    colorBar.style.display = 'none';
-  }
+  if (space.color) { colorBar.style.background=COLOR_HEX[space.color]||'#888'; colorBar.style.display='block'; }
+  else colorBar.style.display='none';
 
-  let body = '';
+  let body='';
   if (['property','railroad','utility'].includes(space.type)) {
-    if (space.price)          body += `<div class="sp-row">Цена<span>${space.price}₽</span></div>`;
-    if (space.mortgage_value) body += `<div class="sp-row">Залог<span>${space.mortgage_value}₽</span></div>`;
-    if (space.house_cost)     body += `<div class="sp-row">Постройка<span>${space.house_cost}₽</span></div>`;
-    if (space.district)       body += `<div class="sp-row">Район<span>${esc(space.district)}</span></div>`;
+    if (space.price)          body+=`<div class="sp-row">Цена<span>${space.price}₽</span></div>`;
+    if (space.mortgage_value) body+=`<div class="sp-row">Залог<span>${space.mortgage_value}₽</span></div>`;
+    if (space.house_cost)     body+=`<div class="sp-row">Постройка<span>${space.house_cost}₽</span></div>`;
+    if (space.district)       body+=`<div class="sp-row">Район<span>${esc(space.district)}</span></div>`;
     if (space.rents?.length) {
-      body += `<div style="border-top:1px solid var(--border);margin:6px 0"></div>`;
-      const labels = ['Аренда','1 дом','2 дома','3 дома','4 дома','Отель'];
-      space.rents.forEach((r,i) => {
-        if (r) body += `<div class="sp-row">${labels[i]||i}<span>${r}₽</span></div>`;
+      body+=`<div style="border-top:1px solid var(--border);margin:6px 0"></div>`;
+      ['Аренда','1 дом','2 дома','3 дома','4 дома','Отель'].forEach((l,i)=>{
+        if (space.rents[i]) body+=`<div class="sp-row">${l}<span>${space.rents[i]}₽</span></div>`;
       });
     }
     if (gameState) {
-      const owner = gameState.players.find(p => p.properties?.[space.id] !== undefined);
+      const owner = gameState.players.find(p=>p.properties?.[space.id]!==undefined);
       if (owner) {
-        body += `<div style="border-top:1px solid var(--border);margin:6px 0"></div>`;
-        body += `<div class="sp-row">Владелец<span style="color:${owner.color}">${esc(owner.name)}</span></div>`;
-        const info = owner.properties[space.id];
-        if (info.mortgaged) body += `<div class="sp-row">Статус<span style="color:var(--red)">Заложено</span></div>`;
-        if (info.houses > 0) {
-          const hl = info.houses === 5 ? 'Отель' : `${info.houses} дом(а)`;
-          body += `<div class="sp-row">Застройка<span style="color:var(--green)">${hl}</span></div>`;
-        }
+        body+=`<div style="border-top:1px solid var(--border);margin:6px 0"></div>`;
+        body+=`<div class="sp-row">Владелец<span style="color:${owner.color}">${esc(owner.name)}</span></div>`;
+        const info=owner.properties[space.id];
+        if (info.mortgaged) body+=`<div class="sp-row">Статус<span style="color:var(--red)">Заложено</span></div>`;
+        if (info.houses>0) body+=`<div class="sp-row">Застройка<span style="color:var(--green)">${info.houses===5?'Отель':`${info.houses} дом(а)`}</span></div>`;
       }
     }
-  } else if (space.type === 'tax') {
-    body += `<div class="sp-row">Налог<span>${space.price}₽</span></div>`;
-  } else if (space.type === 'corner') {
-    body += `<div style="font-size:12px;color:var(--text2)">Угловая клетка</div>`;
+  } else if (space.type==='tax') {
+    body+=`<div class="sp-row">Налог<span>${space.price}₽</span></div>`;
+  } else if (space.type==='corner') {
+    body+=`<div style="font-size:12px;color:var(--text2)">Угловая клетка</div>`;
   } else {
-    body += `<div style="font-size:12px;color:var(--text2)">Тяните карту</div>`;
+    body+=`<div style="font-size:12px;color:var(--text2)">Тяните карту</div>`;
   }
   document.getElementById('popup-body').innerHTML = body;
 
-  popup.style.left = '';
-  popup.style.top = '';
-  popup.style.transform = '';
+  popup.style.left=''; popup.style.top=''; popup.style.transform='';
   popup.style.display = 'block';
-
   requestAnimationFrame(() => {
     const r = popup.getBoundingClientRect();
     if (cellEl) {
       const cr = cellEl.getBoundingClientRect();
-      let left = cr.right + 8;
-      let top = cr.top;
-      if (left + r.width > window.innerWidth - 8) left = cr.left - r.width - 8;
-      if (top + r.height > window.innerHeight - 8) top = window.innerHeight - r.height - 8;
-      if (top < 8) top = 8;
-      if (left < 8) left = 8;
-      popup.style.left = left + 'px';
-      popup.style.top = top + 'px';
+      let left = cr.right+8, top = cr.top;
+      if (left+r.width>window.innerWidth-8) left = cr.left-r.width-8;
+      if (top+r.height>window.innerHeight-8) top = window.innerHeight-r.height-8;
+      if (top<8) top=8; if (left<8) left=8;
+      popup.style.left=left+'px'; popup.style.top=top+'px';
     } else {
-      popup.style.left = '50%';
-      popup.style.top = '50%';
-      popup.style.transform = 'translate(-50%,-50%)';
+      popup.style.left='50%'; popup.style.top='50%';
+      popup.style.transform='translate(-50%,-50%)';
     }
   });
 }
-
-function closePopup() {
-  document.getElementById('space-popup').style.display = 'none';
-}
+function closePopup() { document.getElementById('space-popup').style.display='none'; }
 document.addEventListener('click', e => {
   const popup = document.getElementById('space-popup');
-  if (popup.style.display !== 'none' && !popup.contains(e.target) && !e.target.closest('.cell')) {
-    closePopup();
-  }
+  if (popup.style.display!=='none' && !popup.contains(e.target) && !e.target.closest('.cell')) closePopup();
 });
-
-// ═══════════════════════════════════════════════════════════
-// TABS
-// ═══════════════════════════════════════════════════════════
-function switchTab(tab) {
-  currentTab = tab;
-  document.querySelectorAll('.tab-btn').forEach((b,i) => {
-    b.classList.toggle('active', ['players','log','props'][i] === tab);
-  });
-  ['players','log','props'].forEach(t => {
-    document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== tab);
-  });
-  if (tab === 'log' && gameState) renderLog(gameState.log || []);
-}
 
 // ═══════════════════════════════════════════════════════════
 // WINNER
 // ═══════════════════════════════════════════════════════════
 function showWinner(gs) {
-  const winner = gs.players.find(p => p.id === gs.winner);
+  const winner = gs.players.find(p=>p.id===gs.winner);
   if (!winner) return;
   document.getElementById('winner-name').textContent = winner.name;
   document.getElementById('winner-name').style.color = winner.color;
   document.getElementById('winner-overlay').classList.remove('hidden');
   localStorage.removeItem(GID_KEY);
 }
-
 function backToLobby() {
   localStorage.removeItem(GID_KEY);
-  gameState = null;
-  boardBuilt = false;
+  gameState=null; boardBuilt=false; overlayTokens={}; prevPositions={}; prevDiceRolled=false;
   document.getElementById('winner-overlay').classList.add('hidden');
   showLobbyScreen();
-  send({ action: 'list_games' });
+  send({ action:'list_games' });
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1193,13 +1507,13 @@ function showError(msg) {
   if (!banner) {
     banner = document.createElement('div');
     banner.id = 'err-banner';
-    banner.style.cssText = 'position:fixed;top:14px;left:50%;transform:translateX(-50%);background:#ef4444;color:#fff;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;z-index:999;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap';
+    banner.style.cssText='position:fixed;top:14px;left:50%;transform:translateX(-50%);background:#ef4444;color:#fff;padding:8px 18px;border-radius:8px;font-size:13px;font-weight:600;z-index:999;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap';
     document.body.appendChild(banner);
   }
   banner.textContent = msg;
-  banner.style.opacity = '1';
+  banner.style.opacity='1';
   clearTimeout(banner._t);
-  banner._t = setTimeout(() => banner.style.opacity = '0', 3000);
+  banner._t = setTimeout(()=>banner.style.opacity='0', 3000);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1217,7 +1531,7 @@ async function init() {
   updateSteppers();
   await loadBoard();
   connect();
-  window.addEventListener('resize', scaleBoardToFit);
+  window.addEventListener('resize', () => { setVH(); scaleBoardToFit(); });
 }
 
 init();
