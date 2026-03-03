@@ -524,12 +524,18 @@ async def handle_photo(message: Message):
         if changed_dirs:
             await _restart_services(changed_dirs, message.chat.id)
 
-        await message.answer(f"\n{random.choice(CREATION_QUOTES)}")
+        try:
+            await message.answer(f"\n{random.choice(CREATION_QUOTES)}")
+        except Exception:
+            pass
 
     except Exception as e:
         stop_event.set()
         log.exception("Error running assistant with image")
-        await message.answer(f"❌ Ошибка: {e}")
+        try:
+            await message.answer(f"❌ Ошибка: {e}")
+        except Exception:
+            pass
     finally:
         _busy = False
         _proc = None
@@ -611,12 +617,18 @@ async def handle_task(message: Message):
         if changed_dirs:
             await _restart_services(changed_dirs, message.chat.id)
 
-        await message.answer(f"\n{random.choice(CREATION_QUOTES)}")
+        try:
+            await message.answer(f"\n{random.choice(CREATION_QUOTES)}")
+        except Exception:
+            pass
 
     except Exception as e:
         stop_event.set()
         log.exception("Error running assistant")
-        await message.answer(f"❌ Ошибка: {e}")
+        try:
+            await message.answer(f"❌ Ошибка: {e}")
+        except Exception:
+            pass
     finally:
         _busy = False
         _proc = None
