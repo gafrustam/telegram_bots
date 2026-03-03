@@ -450,6 +450,7 @@ function onGameState(gs) {
   if (!boardBuilt && boardData.length) {
     buildBoard();
     boardBuilt = true;
+    scaleBoardToFit();
   }
   renderBoard(gs);
   renderPlayers(gs);
@@ -556,6 +557,23 @@ function buildBoard() {
     cell.addEventListener('click', () => showSpacePopup(space, cell));
     board.appendChild(cell);
     window._cells[space.id] = cell;
+  });
+}
+
+function scaleBoardToFit() {
+  if (!boardBuilt) return;
+  const wrap = document.getElementById('board-wrap');
+  const board = document.getElementById('board');
+  board.style.transform = '';
+  requestAnimationFrame(() => {
+    const bw = board.offsetWidth;
+    const bh = board.offsetHeight;
+    const ww = wrap.clientWidth - 16;  // subtract 8px padding each side
+    const wh = wrap.clientHeight - 16;
+    if (bw > 0) {
+      const scale = Math.min(1, ww / bw, wh / bh);
+      if (scale < 0.999) board.style.transform = `scale(${scale})`;
+    }
   });
 }
 
@@ -1058,6 +1076,7 @@ function esc(s) {
 async function init() {
   await loadBoard();
   connect();
+  window.addEventListener('resize', scaleBoardToFit);
 }
 
 init();

@@ -472,7 +472,7 @@ async def handle_photo(message: Message):
         tg_file = await message.bot.get_file(photo.file_id)
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
             tmp_path = tmp.name
-        await tg_file.download_to_drive(tmp_path)
+        await message.bot.download_file(tg_file.file_path, tmp_path)
 
         if caption:
             text = f"{caption}\n\n(Изображение сохранено в: {tmp_path})"
