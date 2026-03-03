@@ -168,8 +168,9 @@ def main() -> None:
 
     try:
         forecast = fetch_forecast()
-    except (httpx.TimeoutException, httpx.NetworkError, httpx.ProtocolError) as exc:
-        print(f"  → Network error fetching forecast (transient): {exc}")
+    except (httpx.TimeoutException, httpx.NetworkError, httpx.ProtocolError,
+            httpx.HTTPStatusError) as exc:
+        print(f"  → Transient error fetching forecast (skipping): {exc}")
         return
     print(f"  Forecast ({len(forecast)} slots):")
     for s in forecast:
