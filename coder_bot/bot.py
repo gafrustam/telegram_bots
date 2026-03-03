@@ -4,6 +4,7 @@ import logging
 import os
 import random
 import re
+import tempfile
 import time
 from configparser import ConfigParser
 from datetime import datetime, timedelta, timezone
@@ -445,6 +446,101 @@ async def cb_stop_task(callback: CallbackQuery):
         await callback.answer("⏹ Останавливаю...")
     else:
         await callback.answer("Нет активной задачи.")
+
+
+@router.message(F.photo)
+async def handle_photo(message: Message):
+    global _busy, _proc, _stop_requested
+    if _busy:
+        await message.answer("⏳ Уже выполняю задачу. Дождись завершения.")
+        return
+
+    _busy = True
+    _stop_requested = False
+    caption = (message.caption or "").strip()
+    start_time = time.time()
+
+    status_msg = await message.answer("⏳ Запускаю Claude Code...", reply_markup=STOP_KB)
+    stop_event = asyncio.Event()
+    updater_task = asyncio.create_task(
+        _update_status(status_msg, start_time, stop_event)
+    )
+
+    tmp_path = None
+    try:
+        photo = message.photo[-1]  # largest available size
+        tg_file = await message.bot.get_file(photo.file_id)
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+            tmp_path = tmp.name
+        await tg_file.download_to_drive(tmp_path)
+
+        if caption:
+            text = f"{caption}\n\n(Изображение сохранено в: {tmp_path})"
+        else:
+            text = f"Пользователь прислал изображение без подписи. Файл: {tmp_path}"
+
+        old_head = _get_head()
+
+        cmd = [CLAUDE_PATH, "-p", text, "--dangerously-skip-permissions", "--output-format", "text"]
+        env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+
+        _proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            cwd=REPO_ROOT,
+            env=env,
+        )
+
+        stdout, _ = await _proc.communicate()
+        output = stdout.decode("utf-8", errors="replace")
+        elapsed = int(time.time() - start_time)
+        mins, secs = divmod(elapsed, 60)
+
+        stop_event.set()
+
+        if _stop_requested:
+            try:
+                await status_msg.edit_text(f"⏹ Остановлено ({mins}:{secs:02d})")
+            except Exception:
+                pass
+            if output.strip():
+                await _send_chunked(message.chat.id, output)
+            return
+
+        try:
+            await status_msg.edit_text(f"✅ Готово за {mins}:{secs:02d}")
+        except Exception:
+            pass
+
+        if _is_rate_limited(output):
+            await message.answer("⚠️ Ассистент сообщает о rate limit. Попробуй позже.")
+
+        await _send_chunked(message.chat.id, output)
+
+        await _commit_and_push(message.chat.id)
+
+        changed_dirs = _get_changed_dirs(old_head)
+        if changed_dirs:
+            await _restart_services(changed_dirs, message.chat.id)
+
+        await message.answer(f"\n{random.choice(CREATION_QUOTES)}")
+
+    except Exception as e:
+        stop_event.set()
+        log.exception("Error running assistant with image")
+        await message.answer(f"❌ Ошибка: {e}")
+    finally:
+        _busy = False
+        _proc = None
+        if tmp_path:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+        if not updater_task.done():
+            stop_event.set()
+            updater_task.cancel()
 
 
 @router.message(F.text)
