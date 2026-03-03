@@ -533,7 +533,7 @@ function renderLobby(games) {
         <div class="owner">${esc(g.owner)}</div>
         <div class="slots">👥 ${g.humans}/${g.max_humans} &nbsp;🤖 ${g.ai}</div>
       </div>
-      <button class="btn-success" onclick="joinGame('${g.game_id}')">Войти</button>
+      ${g.humans < g.max_humans ? `<button class="btn-success" onclick="joinGame('${g.game_id}')">Войти</button>` : '<span style="color:#94a3b8;font-size:0.85rem">Полная</span>'}
     `;
     list.appendChild(d);
   });

@@ -78,6 +78,7 @@ def list_open_games() -> list[dict]:
         }
         for g in _games.values()
         if g.status == "lobby"
+        and len([p for p in g.players if not p.is_ai]) < g.max_humans
     ]
 
 
@@ -102,6 +103,8 @@ def create_game(owner_id: str, owner_name: str, max_humans: int, max_ai: int) ->
         )
         g.players.append(ai)
     _games[gid] = g
+    if _all_humans_joined(g):
+        _start_game(g)
     return g
 
 
