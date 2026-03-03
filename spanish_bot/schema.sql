@@ -63,3 +63,11 @@ CREATE TABLE IF NOT EXISTS user_topic_history (
     used_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (user_id, cefr_level, topic)
 );
+
+CREATE TABLE IF NOT EXISTS user_grammar_history (
+    user_id      BIGINT NOT NULL REFERENCES users(id),
+    level_num    INTEGER NOT NULL,
+    grammar_topic TEXT NOT NULL,
+    used_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, level_num, grammar_topic)
+);

@@ -294,3 +294,31 @@ async def reset_used_topics(user_id: int, cefr: str) -> None:
         "DELETE FROM user_topic_history WHERE user_id = $1 AND cefr_level = $2",
         user_id, cefr,
     )
+
+
+# ── Grammar history ──────────────────────────────────────
+
+async def get_used_grammars(user_id: int, level_num: int) -> list[str]:
+    rows = await _fetch(
+        "SELECT grammar_topic FROM user_grammar_history WHERE user_id = $1 AND level_num = $2",
+        user_id, level_num,
+    )
+    return [r["grammar_topic"] for r in rows]
+
+
+async def mark_grammar_used(user_id: int, level_num: int, grammar_topic: str) -> None:
+    await _execute(
+        """
+        INSERT INTO user_grammar_history (user_id, level_num, grammar_topic)
+        VALUES ($1, $2, $3)
+        ON CONFLICT DO NOTHING
+        """,
+        user_id, level_num, grammar_topic,
+    )
+
+
+async def reset_used_grammars(user_id: int, level_num: int) -> None:
+    await _execute(
+        "DELETE FROM user_grammar_history WHERE user_id = $1 AND level_num = $2",
+        user_id, level_num,
+    )

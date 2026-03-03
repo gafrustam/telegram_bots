@@ -60,13 +60,14 @@ def _encode_mp3(mp3_path: str) -> str:
 
 # ── Scenario generation ─────────────────────────────────
 
-async def generate_scenario(level: DifficultyLevel, topic: str, user_id: int | None = None) -> dict:
+async def generate_scenario(level: DifficultyLevel, topic: str, user_id: int | None = None, grammar_override: str | None = None) -> dict:
     provider = os.getenv("AI_PROVIDER", "openai").lower()
     uid_tag = f"user_id={user_id} " if user_id else ""
+    grammar = grammar_override if grammar_override is not None else ", ".join(level.grammar)
     system_prompt = _load_prompt(
         "generate_scenario.txt",
         level=str(level.level), label=level.label, cefr=level.cefr,
-        grammar=level.grammar, topic=topic,
+        grammar=grammar, topic=topic,
         max_sentence_words=str(level.max_sentence_words),
         vocab_count=str(level.vocab_count),
         construction_count=str(level.construction_count),
@@ -89,13 +90,15 @@ async def generate_scenario(level: DifficultyLevel, topic: str, user_id: int | N
 async def get_conversation_reply(
     history: list[dict], level: DifficultyLevel,
     scenario: str, exchanges_left: int, user_id: int | None = None,
+    grammar_override: str | None = None,
 ) -> str:
     provider = os.getenv("AI_PROVIDER", "openai").lower()
     uid_tag = f"user_id={user_id} " if user_id else ""
+    grammar = grammar_override if grammar_override is not None else ", ".join(level.grammar)
     system_prompt = _load_prompt(
         "conversation.txt",
         level=str(level.level), label=level.label, cefr=level.cefr,
-        grammar=level.grammar, max_sentence_words=str(level.max_sentence_words),
+        grammar=grammar, max_sentence_words=str(level.max_sentence_words),
         scenario=scenario, exchanges_left=str(exchanges_left),
     )
     logger.info("%sconversation reply via provider=%s exchanges_left=%d", uid_tag, provider, exchanges_left)
@@ -223,13 +226,15 @@ async def assess_conversation(
     ogg_paths: list[str], history: list[dict],
     level: DifficultyLevel, scenario: str,
     exchange_count: int, user_id: int | None = None,
+    grammar_override: str | None = None,
 ) -> dict:
     provider = os.getenv("AI_PROVIDER", "openai").lower()
     uid_tag = f"user_id={user_id} " if user_id else ""
+    grammar = grammar_override if grammar_override is not None else ", ".join(level.grammar)
     system_prompt = _load_prompt(
         "assess.txt",
         level=str(level.level), label=level.label, cefr=level.cefr,
-        grammar=level.grammar, scenario=scenario, exchange_count=str(exchange_count),
+        grammar=grammar, scenario=scenario, exchange_count=str(exchange_count),
     )
     transcript_lines = []
     for msg in history:

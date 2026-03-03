@@ -212,9 +212,10 @@ async def _generate_and_show_scenario(message: Message, state: FSMContext) -> No
     await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
 
     topic_key = await _pick_topic(user_id, level.cefr)
+    grammar_focus = await _pick_grammar(user_id, level_num)
 
     try:
-        scenario_data = await generate_scenario(level, topic_key, user_id=user_id)
+        scenario_data = await generate_scenario(level, topic_key, user_id=user_id, grammar_override=grammar_focus)
     except Exception:
         logger.exception("Failed to generate scenario")
         await message.answer(
@@ -241,6 +242,7 @@ async def _generate_and_show_scenario(message: Message, state: FSMContext) -> No
         user_audio_file_ids=[],
         exchange_count=0,
         db_conversation_id=None,
+        grammar=grammar_focus,
     )
 
     text = format_scenario(topic, scenario_text, vocabulary, constructions)
@@ -267,9 +269,10 @@ async def handle_another_topic(callback: CallbackQuery, state: FSMContext) -> No
     await callback.answer("Генерирую новую тему...")
 
     topic_key = await _pick_topic(user_id, level.cefr)
+    grammar_focus = await _pick_grammar(user_id, level_num)
 
     try:
-        scenario_data = await generate_scenario(level, topic_key, user_id=user_id)
+        scenario_data = await generate_scenario(level, topic_key, user_id=user_id, grammar_override=grammar_focus)
     except Exception:
         logger.exception("Failed to generate scenario")
         await callback.answer("Ошибка генерации, попробуй ещё раз", show_alert=True)
@@ -287,6 +290,7 @@ async def handle_another_topic(callback: CallbackQuery, state: FSMContext) -> No
         vocabulary=vocabulary,
         constructions=constructions,
         opening_line=opening_line,
+        grammar=grammar_focus,
     )
 
     text = format_scenario(topic, scenario_text, vocabulary, constructions)
@@ -434,12 +438,14 @@ async def handle_voice_in_conversation(message: Message, state: FSMContext) -> N
 
     # Get bot reply
     exchanges_left = level.exchanges - exchange_count
+    grammar = data.get("grammar")
     try:
         bot_reply = await get_conversation_reply(
             history=history,
             level=level,
             scenario=scenario,
             exchanges_left=exchanges_left,
+            grammar_override=grammar,
         )
     except Exception:
         logger.exception("Failed to get conversation reply")
@@ -526,6 +532,7 @@ async def _run_assessment(message: Message, state: FSMContext) -> None:
     exchange_count = data["exchange_count"]
     db_conv_id = data.get("db_conversation_id")
     scenario = data["scenario"]
+    grammar = data.get("grammar")
 
     try:
         await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
@@ -545,6 +552,7 @@ async def _run_assessment(message: Message, state: FSMContext) -> None:
                 level=level,
                 scenario=scenario,
                 exchange_count=exchange_count,
+                grammar_override=grammar,
             )
 
         response_text = format_assessment(result)
@@ -607,9 +615,10 @@ async def handle_result_new(callback: CallbackQuery, state: FSMContext) -> None:
     await bot.send_chat_action(callback.message.chat.id, ChatAction.TYPING)
 
     topic_key = await _pick_topic(user_id, level.cefr)
+    grammar_focus = await _pick_grammar(user_id, level_num)
 
     try:
-        scenario_data = await generate_scenario(level, topic_key, user_id=user_id)
+        scenario_data = await generate_scenario(level, topic_key, user_id=user_id, grammar_override=grammar_focus)
     except Exception:
         logger.exception("Failed to generate scenario")
         await callback.message.answer(
@@ -633,6 +642,7 @@ async def handle_result_new(callback: CallbackQuery, state: FSMContext) -> None:
         user_audio_file_ids=[],
         exchange_count=0,
         db_conversation_id=None,
+        grammar=grammar_focus,
     )
 
     text = format_scenario(topic, scenario_text, vocabulary)
@@ -712,6 +722,18 @@ async def _pick_topic(user_id: int, cefr: str) -> str:
     topic = random.choice(available)
     await database.mark_topic_used(user_id, cefr, topic)
     return topic
+
+
+async def _pick_grammar(user_id: int, level_num: int) -> str:
+    all_grammars = get_level(level_num).grammar
+    used = set(await database.get_used_grammars(user_id, level_num))
+    available = [g for g in all_grammars if g not in used]
+    if not available:
+        await database.reset_used_grammars(user_id, level_num)
+        available = all_grammars
+    grammar = random.choice(available)
+    await database.mark_grammar_used(user_id, level_num, grammar)
+    return grammar
 
 
 def _split_message(text: str, limit: int = 4096) -> list[str]:
