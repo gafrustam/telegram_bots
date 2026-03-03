@@ -266,3 +266,31 @@ async def get_user_recent_assessments(user_id: int, limit: int = 5) -> list[dict
         user_id, limit,
     )
     return [dict(r) for r in rows]
+
+
+# ── Topic history ────────────────────────────────────────
+
+async def get_used_topics(user_id: int, cefr: str) -> list[str]:
+    rows = await _fetch(
+        "SELECT topic FROM user_topic_history WHERE user_id = $1 AND cefr_level = $2",
+        user_id, cefr,
+    )
+    return [r["topic"] for r in rows]
+
+
+async def mark_topic_used(user_id: int, cefr: str, topic: str) -> None:
+    await _execute(
+        """
+        INSERT INTO user_topic_history (user_id, cefr_level, topic)
+        VALUES ($1, $2, $3)
+        ON CONFLICT DO NOTHING
+        """,
+        user_id, cefr, topic,
+    )
+
+
+async def reset_used_topics(user_id: int, cefr: str) -> None:
+    await _execute(
+        "DELETE FROM user_topic_history WHERE user_id = $1 AND cefr_level = $2",
+        user_id, cefr,
+    )

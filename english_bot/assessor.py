@@ -60,13 +60,13 @@ def _encode_mp3(mp3_path: str) -> str:
 
 # ── Scenario generation ─────────────────────────────────
 
-async def generate_scenario(level: DifficultyLevel, user_id: int | None = None) -> dict:
+async def generate_scenario(level: DifficultyLevel, topic: str, user_id: int | None = None) -> dict:
     provider = os.getenv("AI_PROVIDER", "openai").lower()
     uid_tag = f"user_id={user_id} " if user_id else ""
     system_prompt = _load_prompt(
         "generate_scenario.txt",
         level=str(level.level), label=level.label, cefr=level.cefr,
-        grammar=level.grammar, topics=level.topics,
+        grammar=level.grammar, topic=topic,
         max_sentence_words=str(level.max_sentence_words),
         vocab_count=str(level.vocab_count),
         construction_count=str(level.construction_count),
@@ -129,7 +129,7 @@ async def _generate_text_google(system_prompt: str, user_msg: str) -> dict:
     from google.genai import types
 
     client = genai.Client(api_key=os.getenv("GOOGLE_AI_API_KEY"))
-    model_name = os.getenv("GOOGLE_TEXT_MODEL", "gemini-2.0-flash")
+    model_name = os.getenv("GOOGLE_TEXT_MODEL", "gemini-2.5-flash")
     response = await asyncio.to_thread(
         client.models.generate_content,
         model=model_name, contents=user_msg,
@@ -151,7 +151,7 @@ async def _conversation_reply_google(system_prompt: str, history: list[dict]) ->
     from google.genai import types
 
     client = genai.Client(api_key=os.getenv("GOOGLE_AI_API_KEY"))
-    model_name = os.getenv("GOOGLE_TEXT_MODEL", "gemini-2.0-flash")
+    model_name = os.getenv("GOOGLE_TEXT_MODEL", "gemini-2.5-flash")
 
     contents = []
     for msg in history:
@@ -205,7 +205,7 @@ async def _transcribe_voice_google(ogg_data: bytes) -> str:
     from google.genai import types
 
     client = genai.Client(api_key=os.getenv("GOOGLE_AI_API_KEY"))
-    model_name = os.getenv("GOOGLE_AUDIO_MODEL", "gemini-2.0-flash")
+    model_name = os.getenv("GOOGLE_AUDIO_MODEL", "gemini-2.5-flash")
     response = await asyncio.to_thread(
         client.models.generate_content,
         model=model_name,
@@ -285,7 +285,7 @@ async def _assess_conversation_google(
     from google.genai import types
 
     client = genai.Client(api_key=os.getenv("GOOGLE_AI_API_KEY"))
-    model_name = os.getenv("GOOGLE_AUDIO_MODEL", "gemini-2.0-flash")
+    model_name = os.getenv("GOOGLE_AUDIO_MODEL", "gemini-2.5-flash")
 
     content_parts: list = [
         types.Part.from_text(text=f"Conversation transcript:\n{transcript_text}\n\nNow here are the student's audio recordings:"),

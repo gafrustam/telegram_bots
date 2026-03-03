@@ -19,7 +19,10 @@ from aiogram.types import (
     Message,
 )
 
+import random
+
 import database
+from topics import TOPICS_BY_CEFR
 from assessor import (
     assess_conversation,
     generate_scenario,
@@ -208,8 +211,10 @@ async def _generate_and_show_scenario(message: Message, state: FSMContext) -> No
     await message.answer("⏳ <i>Генерирую тему...</i>", parse_mode=ParseMode.HTML)
     await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
 
+    topic_key = await _pick_topic(user_id, level.cefr)
+
     try:
-        scenario_data = await generate_scenario(level)
+        scenario_data = await generate_scenario(level, topic_key, user_id=user_id)
     except Exception:
         logger.exception("Failed to generate scenario")
         await message.answer(
@@ -256,11 +261,14 @@ async def handle_another_topic(callback: CallbackQuery, state: FSMContext) -> No
     data = await state.get_data()
     level_num = data.get("level_num", 3)
     level = get_level(level_num)
+    user_id = callback.from_user.id
 
     await callback.answer("Генерирую новую тему...")
 
+    topic_key = await _pick_topic(user_id, level.cefr)
+
     try:
-        scenario_data = await generate_scenario(level)
+        scenario_data = await generate_scenario(level, topic_key, user_id=user_id)
     except Exception:
         logger.exception("Failed to generate scenario")
         await callback.answer("Ошибка генерации, попробуй ещё раз", show_alert=True)
@@ -596,8 +604,10 @@ async def handle_result_new(callback: CallbackQuery, state: FSMContext) -> None:
     )
     await bot.send_chat_action(callback.message.chat.id, ChatAction.TYPING)
 
+    topic_key = await _pick_topic(user_id, level.cefr)
+
     try:
-        scenario_data = await generate_scenario(level)
+        scenario_data = await generate_scenario(level, topic_key, user_id=user_id)
     except Exception:
         logger.exception("Failed to generate scenario")
         await callback.message.answer(
@@ -691,6 +701,18 @@ async def handle_unexpected_text(message: Message, state: FSMContext) -> None:
 
 
 # ── Utilities ────────────────────────────────────────────
+
+async def _pick_topic(user_id: int, cefr: str) -> str:
+    all_topics = TOPICS_BY_CEFR.get(cefr, TOPICS_BY_CEFR["B1"])
+    used = set(await database.get_used_topics(user_id, cefr))
+    available = [t for t in all_topics if t not in used]
+    if not available:
+        await database.reset_used_topics(user_id, cefr)
+        available = all_topics
+    topic = random.choice(available)
+    await database.mark_topic_used(user_id, cefr, topic)
+    return topic
+
 
 def _split_message(text: str, limit: int = 4096) -> list[str]:
     chunks = []

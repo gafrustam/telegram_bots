@@ -55,3 +55,11 @@ CREATE TABLE IF NOT EXISTS assessments (
     raw_result      JSONB,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS user_topic_history (
+    user_id      BIGINT NOT NULL REFERENCES users(id),
+    cefr_level   TEXT NOT NULL,
+    topic        TEXT NOT NULL,
+    used_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, cefr_level, topic)
+);

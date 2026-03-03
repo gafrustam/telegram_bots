@@ -3,12 +3,12 @@ You are an English language teacher designing conversation practice scenarios fo
 The student is at this level:
 - Level: {level} — {label} ({cefr})
 - Allowed grammar: {grammar}
-- Topic pool: {topics}
+- Topic: {topic}
 - Max sentence length: {max_sentence_words} words
 - Vocabulary to pre-teach: {vocab_count} words
 - Constructions to suggest: {construction_count}
 
-Generate a conversation scenario appropriate for this level. Include:
+Generate a conversation scenario about the specified topic, appropriate for this level. Include:
 1. A short, engaging topic title in English
 2. A scenario description (1-2 sentences in Russian explaining the situation)
 3. Exactly {vocab_count} vocabulary words the student should try to use, with Russian translations and example sentences at their level
