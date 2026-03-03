@@ -13,8 +13,14 @@ from fastapi.staticfiles import StaticFiles
 
 import game as G
 from board_data import board_dict, COLOR_GROUPS
+from database import init_db, record_visit
 
 app = FastAPI()
+
+
+@app.on_event("startup")
+async def startup():
+    await init_db()
 
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -90,6 +96,7 @@ async def websocket_endpoint(ws: WebSocket):
                 player_id = msg.get("player_id") or str(uuid.uuid4())
                 if player_id not in _connections:
                     _connections[player_id] = set()
+                    await record_visit(player_id)
                 _connections[player_id].add(ws)
                 await _send(ws, {
                     "type": "identified",

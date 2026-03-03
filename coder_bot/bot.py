@@ -320,6 +320,177 @@ async def _collect_vpr_stats(env_path: str) -> str | None:
         return None
 
 
+async def _collect_convo_bot_stats(env_path: str, label: str) -> str | None:
+    """Query English/Spanish PostgreSQL (conversations table) for today's activity."""
+    try:
+        import asyncpg
+        env = dotenv_values(env_path)
+        dsn = env.get("DATABASE_URL")
+        if not dsn:
+            return None
+        conn = await asyncpg.connect(dsn=dsn, timeout=8)
+        try:
+            rows = await conn.fetch("""
+                SELECT DISTINCT u.username, u.id,
+                       (DATE(u.created_at) = CURRENT_DATE) AS is_new
+                FROM users u
+                JOIN conversations c ON c.user_id = u.id
+                WHERE DATE(c.created_at) = CURRENT_DATE
+            """)
+        finally:
+            await conn.close()
+
+        if not rows:
+            return None
+
+        total = len(rows)
+        all_names = [
+            f"@{r['username']}" if r['username'] else f"id{r['id']}"
+            for r in rows
+        ]
+        new_names = [
+            f"@{r['username']}" if r['username'] else f"id{r['id']}"
+            for r in rows if r['is_new']
+        ]
+        body = _format_user_list(all_names, total, new_names)
+        return f"{label}\n{body}"
+    except Exception as e:
+        log.warning("%s stats error: %s", label, e)
+        return None
+
+
+async def _collect_voice_stats(env_path: str) -> str | None:
+    """Query Voice bot PostgreSQL for today's activity."""
+    try:
+        import asyncpg
+        env = dotenv_values(env_path)
+        dsn = env.get("DATABASE_URL")
+        if not dsn:
+            return None
+        conn = await asyncpg.connect(dsn=dsn, timeout=8)
+        try:
+            rows = await conn.fetch("""
+                SELECT DISTINCT u.username, u.id,
+                       (DATE(u.created_at) = CURRENT_DATE) AS is_new
+                FROM users u
+                JOIN transcriptions t ON t.user_id = u.id
+                WHERE DATE(t.created_at) = CURRENT_DATE
+            """)
+        finally:
+            await conn.close()
+
+        if not rows:
+            return None
+
+        total = len(rows)
+        all_names = [
+            f"@{r['username']}" if r['username'] else f"id{r['id']}"
+            for r in rows
+        ]
+        new_names = [
+            f"@{r['username']}" if r['username'] else f"id{r['id']}"
+            for r in rows if r['is_new']
+        ]
+        body = _format_user_list(all_names, total, new_names)
+        return f"🎙 Voice Bot\n{body}"
+    except Exception as e:
+        log.warning("Voice stats error: %s", e)
+        return None
+
+
+async def _collect_interview_stats(db_path: str) -> str | None:
+    """Query Interview SQLite for today's activity."""
+    try:
+        import aiosqlite
+        if not Path(db_path).exists():
+            return None
+        async with aiosqlite.connect(db_path) as db:
+            async with db.execute("""
+                SELECT DISTINCT u.user_id, u.username,
+                       (DATE(u.created_at) = DATE('now')) AS is_new
+                FROM users u
+                JOIN user_problems up ON up.user_id = u.user_id
+                WHERE DATE(up.sent_at) = DATE('now')
+                   OR DATE(up.solved_at) = DATE('now')
+            """) as cur:
+                rows = await cur.fetchall()
+
+        if not rows:
+            return None
+
+        total = len(rows)
+        all_names = [
+            f"@{r[1]}" if r[1] else f"id{r[0]}"
+            for r in rows
+        ]
+        new_names = [
+            f"@{r[1]}" if r[1] else f"id{r[0]}"
+            for r in rows if r[2]
+        ]
+        body = _format_user_list(all_names, total, new_names)
+        return f"💼 Interview Bot\n{body}"
+    except Exception as e:
+        log.warning("Interview stats error: %s", e)
+        return None
+
+
+async def _collect_millionaire_stats(db_path: str) -> str | None:
+    """Query Millionaire SQLite for today's activity."""
+    try:
+        import aiosqlite
+        if not Path(db_path).exists():
+            return None
+        async with aiosqlite.connect(db_path) as db:
+            async with db.execute("""
+                SELECT user_id, username,
+                       (DATE(created_at) = DATE('now')) AS is_new
+                FROM users
+                WHERE DATE(last_visit) = DATE('now')
+            """) as cur:
+                rows = await cur.fetchall()
+
+        if not rows:
+            return None
+
+        total = len(rows)
+        all_names = [
+            f"@{r[1]}" if r[1] else f"id{r[0]}"
+            for r in rows
+        ]
+        new_names = [
+            f"@{r[1]}" if r[1] else f"id{r[0]}"
+            for r in rows if r[2]
+        ]
+        body = _format_user_list(all_names, total, new_names)
+        return f"🏆 Millionaire Bot\n{body}"
+    except Exception as e:
+        log.warning("Millionaire stats error: %s", e)
+        return None
+
+
+async def _collect_monopoly_stats(db_path: str) -> str | None:
+    """Query Monopoly SQLite visits for today's activity."""
+    try:
+        import aiosqlite
+        if not Path(db_path).exists():
+            return None
+        async with aiosqlite.connect(db_path) as db:
+            async with db.execute("""
+                SELECT COUNT(DISTINCT player_id) FROM visits
+                WHERE DATE(visited_at) = DATE('now')
+            """) as cur:
+                row = await cur.fetchone()
+
+        count = row[0] if row else 0
+        if not count:
+            return None
+
+        return f"🎲 Monopoly\n  Активных: {count}"
+    except Exception as e:
+        log.warning("Monopoly stats error: %s", e)
+        return None
+
+
 async def _collect_poker_stats(db_path: str) -> str | None:
     """Query Poker SQLite for today's activity."""
     try:
@@ -359,8 +530,38 @@ async def _send_daily_stats():
     if s:
         sections.append(s)
 
+    # English bot
+    s = await _collect_convo_bot_stats(f"{REPO_ROOT}/english_bot/.env", "🇬🇧 English Bot")
+    if s:
+        sections.append(s)
+
+    # Spanish bot
+    s = await _collect_convo_bot_stats(f"{REPO_ROOT}/spanish_bot/.env", "🇪🇸 Spanish Bot")
+    if s:
+        sections.append(s)
+
+    # Voice bot
+    s = await _collect_voice_stats(f"{REPO_ROOT}/voice_bot/.env")
+    if s:
+        sections.append(s)
+
     # VPR
     s = await _collect_vpr_stats(f"{REPO_ROOT}/vpr_bot/.env")
+    if s:
+        sections.append(s)
+
+    # Interview bot
+    s = await _collect_interview_stats(f"{REPO_ROOT}/interview_bot/interview.db")
+    if s:
+        sections.append(s)
+
+    # Millionaire bot
+    s = await _collect_millionaire_stats(f"{REPO_ROOT}/millionaire_bot/millionaire.db")
+    if s:
+        sections.append(s)
+
+    # Monopoly
+    s = await _collect_monopoly_stats(f"{REPO_ROOT}/monopoly_bot/monopoly.db")
     if s:
         sections.append(s)
 

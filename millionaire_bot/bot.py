@@ -45,7 +45,7 @@ from keyboards import (
     result_keyboard,
     welcome_keyboard,
 )
-from database import init_db
+from database import init_db, upsert_user
 from questions import (
     ask_audience,
     fifty_fifty,
@@ -157,6 +157,11 @@ async def _show_question(
 @router.message(Command("menu"))
 async def cmd_start(message: Message, state: FSMContext) -> None:
     await state.clear()
+    await upsert_user(
+        message.from_user.id,
+        message.from_user.username,
+        message.from_user.first_name,
+    )
     text = (
         "🏆 <b>КТО ХОЧЕТ СТАТЬ МИЛЛИОНЕРОМ?</b>\n\n"
         "Добро пожаловать в самую напряжённую интеллектуальную игру!\n\n"

@@ -21,11 +21,38 @@ CREATE TABLE IF NOT EXISTS questions (
 # Index for fast lookups by level
 _CREATE_IDX = "CREATE INDEX IF NOT EXISTS idx_level ON questions (level)"
 
+_CREATE_USERS = """
+CREATE TABLE IF NOT EXISTS users (
+    user_id    INTEGER PRIMARY KEY,
+    username   TEXT,
+    first_name TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_visit TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)
+"""
+
 
 async def init_db() -> None:
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(_CREATE)
         await db.execute(_CREATE_IDX)
+        await db.execute(_CREATE_USERS)
+        await db.commit()
+
+
+async def upsert_user(user_id: int, username: str | None, first_name: str) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """
+            INSERT INTO users (user_id, username, first_name)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                username   = excluded.username,
+                first_name = excluded.first_name,
+                last_visit = CURRENT_TIMESTAMP
+            """,
+            (user_id, username, first_name),
+        )
         await db.commit()
 
 
