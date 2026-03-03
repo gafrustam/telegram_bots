@@ -30,6 +30,7 @@ from assessor import (
     transcribe_voice,
 )
 from difficulty import get_level, format_level_info
+from grammars import GRAMMARS_BY_LEVEL
 from formatter import (
     format_assessment,
     format_error,
@@ -725,7 +726,7 @@ async def _pick_topic(user_id: int, cefr: str) -> str:
 
 
 async def _pick_grammar(user_id: int, level_num: int) -> str:
-    all_grammars = get_level(level_num).grammar
+    all_grammars = GRAMMARS_BY_LEVEL.get(level_num, [])
     used = set(await database.get_used_grammars(user_id, level_num))
     available = [g for g in all_grammars if g not in used]
     if not available:
