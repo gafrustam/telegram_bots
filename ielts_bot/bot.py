@@ -227,7 +227,7 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
     # RESTORE: replace with WELCOME_TEXT and re-enable state below.
     await message.answer(
         "🎓 <b>IELTS Speaking Practice</b>\n\n"
-        "Нажми кнопку <b>Web App</b> ниже, чтобы открыть тренажёр.",
+        "Нажми кнопку <b>Запустить приложение</b> ниже, чтобы открыть тренажёр.",
         parse_mode=ParseMode.HTML,
         reply_markup=main_menu_keyboard(is_admin=is_adm),
     )

@@ -14,7 +14,7 @@ PART1_BTN  = "🗣 Part 1 — Interview"
 PART2_BTN  = "🎙 Part 2 — Long Turn"
 PART3_BTN  = "💬 Part 3 — Discussion"
 ADMIN_BTN  = "🔧 Админ-панель"
-WEBAPP_BTN = "🌐 Web App"
+WEBAPP_BTN = "🌐 Запустить приложение"
 
 _WEBAPP_URL = os.getenv("WEBAPP_URL", "https://gafrustam.ru/ielts/")
 
