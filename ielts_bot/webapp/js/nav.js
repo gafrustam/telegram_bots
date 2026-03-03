@@ -34,13 +34,21 @@
       desc: "Игра против AI",
       url: "/poker/",
     },
+    {
+      id: "monopoly",
+      emoji: "🏠",
+      name: "Монополия",
+      desc: "Мультиплеер",
+      url: "/monopoly/",
+    },
   ];
 
   function getCurrentApp() {
     const p = location.pathname;
-    if (p.startsWith("/ielts")) return "ielts";
-    if (p.startsWith("/ttt"))   return "ttt";
-    if (p.startsWith("/poker")) return "poker";
+    if (p.startsWith("/ielts"))    return "ielts";
+    if (p.startsWith("/ttt"))      return "ttt";
+    if (p.startsWith("/poker"))    return "poker";
+    if (p.startsWith("/monopoly")) return "monopoly";
     return null;
   }
 
