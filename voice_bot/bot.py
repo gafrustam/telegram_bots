@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import tempfile
+from logging.handlers import RotatingFileHandler
 
 from dotenv import load_dotenv
 
@@ -13,9 +14,13 @@ from telegram.ext import Application, CommandHandler, MessageHandler, ContextTyp
 import database
 from transcriber import transcribe
 
+os.makedirs("logs", exist_ok=True)
+_log_handler = RotatingFileHandler("logs/voice_bot.log", maxBytes=5_000_000, backupCount=3)
+_log_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[_log_handler, logging.StreamHandler()],
 )
 logger = logging.getLogger(__name__)
 

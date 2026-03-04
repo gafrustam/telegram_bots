@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+from logging.handlers import RotatingFileHandler
 import re
 import tempfile
 from datetime import datetime, timedelta, timezone
@@ -46,9 +47,13 @@ from questions import generate_session
 from states import InterruptAction, QuestionAction, ResultAction, SpeakingStates, TopicAction
 from tts import text_to_voice
 
+os.makedirs("logs", exist_ok=True)
+_log_handler = RotatingFileHandler("logs/ielts_bot.log", maxBytes=5_000_000, backupCount=3)
+_log_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[_log_handler, logging.StreamHandler()],
 )
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,9 @@ Sends the /start reply with a WebApp button and sets the menu button.
 """
 
 import asyncio
+import logging
 import os
+from logging.handlers import RotatingFileHandler
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart
@@ -16,6 +18,16 @@ from aiogram.types import (
 )
 
 load_dotenv()
+
+os.makedirs("logs", exist_ok=True)
+_log_handler = RotatingFileHandler("logs/poker_bot.log", maxBytes=5_000_000, backupCount=3)
+_log_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[_log_handler, logging.StreamHandler()],
+)
+logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 WEBAPP_URL = os.getenv("WEBAPP_URL", "https://gafrustam.ru/poker/")
@@ -52,10 +64,10 @@ async def main():
                 web_app=WebAppInfo(url=WEBAPP_URL),
             )
         )
-    except Exception as e:
-        print(f"[bot] Could not set menu button: {e}")
+    except Exception:
+        logger.exception("Could not set menu button")
 
-    print(f"[bot] Starting polling. WebApp URL: {WEBAPP_URL}")
+    logger.info("Starting polling. WebApp URL: %s", WEBAPP_URL)
     await dp.start_polling(bot)
 
 

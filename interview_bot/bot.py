@@ -6,6 +6,7 @@ import html
 import logging
 import os
 import random
+from logging.handlers import RotatingFileHandler
 from datetime import datetime, timezone, timedelta
 
 from dotenv import load_dotenv
@@ -47,7 +48,14 @@ except ImportError:
     pass
 from states import ProblemStates, SetupStates, SettingsStates
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+os.makedirs("logs", exist_ok=True)
+_log_handler = RotatingFileHandler("logs/interview_bot.log", maxBytes=5_000_000, backupCount=3)
+_log_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[_log_handler, logging.StreamHandler()],
+)
 log = logging.getLogger(__name__)
 
 TOKEN = os.environ["TELEGRAM_TOKEN"]
@@ -760,7 +768,7 @@ async def daily_task_scheduler(bot: Bot) -> None:
                                 "🎉 Ты решил все задачи этого уровня! Повышай сложность в /settings.",
                             )
                     except Exception:
-                        pass
+                        log.exception("Failed to notify user %d of completed problems", user_id)
                     continue
 
                 try:
@@ -779,12 +787,12 @@ async def daily_task_scheduler(bot: Bot) -> None:
                         reply_markup=problem_keyboard(0),
                     )
                     log.info("Sent daily problem %d to user %d", problem["id"], user_id)
-                except Exception as e:
-                    log.warning("Failed to send daily task to user %d: %s", user_id, e)
+                except Exception:
+                    log.exception("Failed to send daily task to user %d", user_id)
                     db.update_user(user_id, is_active=0)
 
-        except Exception as e:
-            log.error("Scheduler error: %s", e)
+        except Exception:
+            log.exception("Scheduler error")
 
         # Sleep until next minute
         await asyncio.sleep(60)

@@ -4,8 +4,10 @@ Serves static files + WebSocket game engine.
 """
 
 import asyncio
+import logging
 import random
 import os
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Dict
 
@@ -19,6 +21,16 @@ from ai_player import AIPlayer
 from database import init_db, save_game, load_game, update_stats
 
 load_dotenv()
+
+os.makedirs("logs", exist_ok=True)
+_log_handler = RotatingFileHandler("logs/poker_bot.log", maxBytes=5_000_000, backupCount=3)
+_log_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[_log_handler, logging.StreamHandler()],
+)
+logger = logging.getLogger(__name__)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 GOOGLE_AI_API_KEY = os.getenv("GOOGLE_AI_API_KEY", "")
@@ -117,10 +129,11 @@ async def ws_endpoint(ws: WebSocket, user_id: str):
     except WebSocketDisconnect:
         pass
     except Exception as e:
+        logger.exception("WebSocket handler error for user %s", user_id)
         try:
             await ws.send_json({"type": "error", "message": str(e)})
         except Exception:
-            pass
+            logger.exception("Failed to send error response to user %s", user_id)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -147,6 +160,7 @@ async def _ai_turn(user_id: str, ws: WebSocket, game: PokerGame):
     try:
         decision = await ai.decide(info)
     except Exception:
+        logger.exception("AI decision failed for user %s, defaulting to call", user_id)
         decision = {"action": "call", "amount": 0}
 
     action = decision.get("action", "call")
@@ -189,7 +203,7 @@ async def _get_or_create_game(user_id: str) -> PokerGame:
             _ai[user_id] = AIPlayer(GOOGLE_AI_API_KEY or OPENAI_API_KEY, base_url=_GOOGLE_BASE_URL if GOOGLE_AI_API_KEY else None)
             return game
         except Exception:
-            pass
+            logger.exception("Failed to restore saved game for user %s, starting new game", user_id)
 
     return _new_game(user_id)
 

@@ -2,8 +2,10 @@
 
 import asyncio
 import json
+import logging
 import os
 import uuid
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Optional
 
@@ -14,6 +16,16 @@ from fastapi.staticfiles import StaticFiles
 import game as G
 from board_data import board_dict, COLOR_GROUPS
 from database import init_db, record_visit
+
+os.makedirs("logs", exist_ok=True)
+_log_handler = RotatingFileHandler("logs/monopoly_bot.log", maxBytes=5_000_000, backupCount=3)
+_log_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[_log_handler, logging.StreamHandler()],
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
@@ -40,6 +52,7 @@ async def _broadcast_game(game_id: str, data: dict):
             try:
                 await ws.send_text(json.dumps(data))
             except Exception:
+                logger.exception("WebSocket send failed for player %s", pid)
                 dead.append((pid, ws))
     for pid, ws in dead:
         _connections.get(pid, set()).discard(ws)
@@ -54,6 +67,7 @@ async def _broadcast_lobby():
             try:
                 await ws.send_text(json.dumps(snap))
             except Exception:
+                logger.exception("WebSocket send failed for player %s", pid)
                 dead.append((pid, ws))
     for pid, ws in dead:
         _connections.get(pid, set()).discard(ws)

@@ -2,6 +2,8 @@
 
 import asyncio
 import logging
+import os
+from logging.handlers import RotatingFileHandler
 
 from dotenv import load_dotenv
 
@@ -54,9 +56,13 @@ from questions import (
     phone_a_friend,
 )
 
+os.makedirs("logs", exist_ok=True)
+_log_handler = RotatingFileHandler("logs/millionaire_bot.log", maxBytes=5_000_000, backupCount=3)
+_log_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s  %(levelname)-8s  %(name)s — %(message)s",
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[_log_handler, logging.StreamHandler()],
 )
 log = logging.getLogger(__name__)
 
@@ -146,6 +152,7 @@ async def _show_question(
     try:
         sent = await msg.edit_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
     except Exception:
+        log.exception("edit_text failed, falling back to answer")
         sent = await msg.answer(text, reply_markup=kb, parse_mode=ParseMode.HTML)
 
     await state.update_data(msg_id=sent.message_id)
@@ -207,8 +214,8 @@ async def cb_start_game(callback: CallbackQuery, state: FSMContext) -> None:
 
     try:
         q_data = await generate_question(1)
-    except Exception as e:
-        log.error("Question generation failed: %s", e)
+    except Exception:
+        log.exception("Question generation failed")
         await loading_msg.edit_text(
             "❌ Не удалось получить вопрос. Попробуйте снова.",
             reply_markup=welcome_keyboard(),
@@ -377,8 +384,8 @@ async def cb_next_question(callback: CallbackQuery, state: FSMContext) -> None:
 
     try:
         q_data = await generate_question(next_level)
-    except Exception as e:
-        log.error("Question generation failed: %s", e)
+    except Exception:
+        log.exception("Question generation failed")
         await callback.message.edit_text(
             "❌ Ошибка генерации вопроса. Попробуйте ещё раз.",
             reply_markup=game_over_keyboard(),
@@ -482,8 +489,8 @@ async def cb_phone_friend(callback: CallbackQuery, state: FSMContext) -> None:
             data["correct"],
             data.get("removed", []),
         )
-    except Exception as e:
-        log.error("Phone a friend failed: %s", e)
+    except Exception:
+        log.exception("Phone a friend failed")
         advice = "Извини, не дозвонился…"
 
     lifelines["phone"] = False
@@ -519,8 +526,8 @@ async def cb_audience(callback: CallbackQuery, state: FSMContext) -> None:
             data["correct"],
             data.get("removed", []),
         )
-    except Exception as e:
-        log.error("Ask audience failed: %s", e)
+    except Exception:
+        log.exception("Ask audience failed")
         votes = {k: 25 for k in data["options"] if k not in data.get("removed", [])}
 
     lifelines["audience"] = False
