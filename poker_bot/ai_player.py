@@ -6,9 +6,14 @@ Strategy: Monte Carlo hand strength + GTO heuristics + GPT for strategic variety
 import random
 import json
 import asyncio
+import os
 from typing import List, Optional
 
 from openai import AsyncOpenAI
+
+# ── AI provider config ────────────────────────────────────────────────────────
+# Set AI_PROVIDER=google in .env to use Google Gemini; default is openai
+_GOOGLE_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A']
 SUITS = ['h', 'd', 'c', 's']
@@ -101,9 +106,17 @@ def monte_carlo_strength(hole: List[str], community: List[str],
 # ──────────────────────────────────────────────────────────────────────────────
 
 class AIPlayer:
-    def __init__(self, openai_api_key: str, base_url: str | None = None):
-        self.client = AsyncOpenAI(api_key=openai_api_key, base_url=base_url)
-        self._model = "gemini-2.0-flash" if base_url else "gpt-4o-mini"
+    def __init__(self):
+        provider = os.getenv("AI_PROVIDER", "openai").lower()
+        if provider == "google":
+            self.client = AsyncOpenAI(
+                api_key=os.getenv("GOOGLE_AI_API_KEY", ""),
+                base_url=_GOOGLE_BASE_URL,
+            )
+            self._model = os.getenv("GOOGLE_TEXT_MODEL", "gemini-2.0-flash")
+        else:
+            self.client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+            self._model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
         self.decisions_made = 0
         self.action_history: List[str] = []   # last ~20 actions for pattern tracking
         self._gpt_every = random.randint(5, 9)  # vary GPT call frequency

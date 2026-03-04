@@ -1,4 +1,7 @@
-"""OpenAI-based solution feedback for the interview prep bot."""
+"""AI-based solution feedback for the interview prep bot.
+
+Set AI_PROVIDER=google in .env to use Google Gemini, default is OpenAI.
+"""
 import json
 import logging
 import os
@@ -6,7 +9,28 @@ import os
 from openai import AsyncOpenAI
 
 log = logging.getLogger(__name__)
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# ── AI provider config ────────────────────────────────────────────────────────
+# Change AI_PROVIDER in .env to switch between openai and google
+_GOOGLE_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+
+
+def _get_client() -> AsyncOpenAI:
+    provider = os.getenv("AI_PROVIDER", "openai").lower()
+    if provider == "google":
+        return AsyncOpenAI(
+            api_key=os.getenv("GOOGLE_AI_API_KEY", ""),
+            base_url=_GOOGLE_BASE_URL,
+        )
+    return AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+
+
+def _get_model() -> str:
+    provider = os.getenv("AI_PROVIDER", "openai").lower()
+    if provider == "google":
+        return os.getenv("GOOGLE_TEXT_MODEL", "gemini-2.5-flash")
+    return os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
 
 SYSTEM_PROMPT = """\
 Ты — опытный Senior-инженер и ментор по алгоритмам. Ты оцениваешь решения задач кандидатов.
@@ -77,8 +101,8 @@ async def check_solution(
     )
 
     try:
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
+        response = await _get_client().chat.completions.create(
+            model=_get_model(),
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
@@ -95,14 +119,14 @@ async def check_solution(
         log.error("JSON parse error in feedback: %s", e)
         return {
             "is_correct": None,
-            "verdict": "Не удалось разобрать ответ GPT. Попробуй ещё раз.",
+            "verdict": "Не удалось разобрать ответ AI. Попробуй ещё раз.",
             "efficiency": "",
             "improvement": None,
             "failing_test": None,
             "mistake": None,
         }
     except Exception as e:
-        log.error("OpenAI error in feedback: %s", e)
+        log.exception("AI error in feedback: %s", e)
         return {
             "is_correct": None,
             "verdict": "Ошибка при проверке. Попробуй ещё раз.",
@@ -116,8 +140,8 @@ async def check_solution(
 async def translate_text(text: str) -> str:
     """Translate Russian text to English."""
     try:
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
+        response = await _get_client().chat.completions.create(
+            model=_get_model(),
             messages=[
                 {"role": "user", "content": TRANSLATE_PROMPT.format(text=text)},
             ],
@@ -126,5 +150,5 @@ async def translate_text(text: str) -> str:
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        log.error("Translation error: %s", e)
+        log.exception("Translation error: %s", e)
         return text  # fallback to original

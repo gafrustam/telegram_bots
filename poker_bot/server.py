@@ -32,9 +32,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-GOOGLE_AI_API_KEY = os.getenv("GOOGLE_AI_API_KEY", "")
-_GOOGLE_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 STATIC_DIR = Path(__file__).parent / "static"
 
 app = FastAPI(title="Poker Mini App")
@@ -42,7 +39,7 @@ app = FastAPI(title="Poker Mini App")
 # Mount /static so that index.html can load assets if needed
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-# In-memory sessions (also persisted to SQLite)
+# In-memory sessions (also persisted to PostgreSQL)
 _games: Dict[str, PokerGame] = {}
 _ai: Dict[str, AIPlayer] = {}
 
@@ -144,7 +141,7 @@ async def _ai_turn(user_id: str, ws: WebSocket, game: PokerGame):
     """Run AI decision loop until it's the player's turn or hand is over."""
     ai = _ai.get(user_id)
     if not ai:
-        ai = AIPlayer(GOOGLE_AI_API_KEY or OPENAI_API_KEY, base_url=_GOOGLE_BASE_URL if GOOGLE_AI_API_KEY else None)
+        ai = AIPlayer()
         _ai[user_id] = ai
 
     # Notify frontend
@@ -187,7 +184,7 @@ async def _ai_turn(user_id: str, ws: WebSocket, game: PokerGame):
 def _new_game(user_id: str) -> PokerGame:
     game = PokerGame(starting_stack=3000, small_blind=50)
     _games[user_id] = game
-    _ai[user_id] = AIPlayer(GOOGLE_AI_API_KEY or OPENAI_API_KEY, base_url=_GOOGLE_BASE_URL if GOOGLE_AI_API_KEY else None)
+    _ai[user_id] = AIPlayer()
     return game
 
 
@@ -200,7 +197,7 @@ async def _get_or_create_game(user_id: str) -> PokerGame:
         try:
             game = PokerGame.from_dict(saved)
             _games[user_id] = game
-            _ai[user_id] = AIPlayer(GOOGLE_AI_API_KEY or OPENAI_API_KEY, base_url=_GOOGLE_BASE_URL if GOOGLE_AI_API_KEY else None)
+            _ai[user_id] = AIPlayer()
             return game
         except Exception:
             logger.exception("Failed to restore saved game for user %s, starting new game", user_id)

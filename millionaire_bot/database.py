@@ -1,95 +1,104 @@
-"""Async SQLite persistence for question history."""
+"""Async PostgreSQL persistence for question history."""
 
 import json
-from pathlib import Path
+import logging
+import os
 
-import aiosqlite
+import asyncpg
+from dotenv import load_dotenv
 
-DB_PATH = Path(__file__).parent / "millionaire.db"
+load_dotenv()
 
-_CREATE = """
-CREATE TABLE IF NOT EXISTS questions (
-    id       INTEGER PRIMARY KEY AUTOINCREMENT,
-    level    INTEGER NOT NULL,
-    question TEXT    NOT NULL,
-    options  TEXT    NOT NULL,
-    correct  TEXT    NOT NULL,
-    ts       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)
-"""
-
-# Index for fast lookups by level
-_CREATE_IDX = "CREATE INDEX IF NOT EXISTS idx_level ON questions (level)"
-
-_CREATE_USERS = """
-CREATE TABLE IF NOT EXISTS users (
-    user_id    INTEGER PRIMARY KEY,
-    username   TEXT,
-    first_name TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_visit TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)
-"""
+log = logging.getLogger(__name__)
+_pool: asyncpg.Pool | None = None
 
 
 async def init_db() -> None:
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(_CREATE)
-        await db.execute(_CREATE_IDX)
-        await db.execute(_CREATE_USERS)
-        await db.commit()
+    global _pool
+    dsn = os.environ["DATABASE_URL"]
+    _pool = await asyncpg.create_pool(dsn=dsn, min_size=2, max_size=10, command_timeout=15)
+    async with _pool.acquire() as conn:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS questions (
+                id       SERIAL PRIMARY KEY,
+                level    INTEGER NOT NULL,
+                question TEXT NOT NULL,
+                options  TEXT NOT NULL,
+                correct  TEXT NOT NULL,
+                ts       TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_level ON questions (level)"
+        )
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id    BIGINT PRIMARY KEY,
+                username   TEXT,
+                first_name TEXT,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                last_visit TIMESTAMPTZ DEFAULT NOW()
+            )
+        """)
+
+
+def _pool_get() -> asyncpg.Pool:
+    if _pool is None:
+        raise RuntimeError("DB pool not initialized")
+    return _pool
 
 
 async def upsert_user(user_id: int, username: str | None, first_name: str) -> None:
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
+    pool = _pool_get()
+    async with pool.acquire() as conn:
+        await conn.execute(
             """
             INSERT INTO users (user_id, username, first_name)
-            VALUES (?, ?, ?)
+            VALUES ($1, $2, $3)
             ON CONFLICT(user_id) DO UPDATE SET
-                username   = excluded.username,
-                first_name = excluded.first_name,
-                last_visit = CURRENT_TIMESTAMP
+                username   = EXCLUDED.username,
+                first_name = EXCLUDED.first_name,
+                last_visit = NOW()
             """,
-            (user_id, username, first_name),
+            user_id, username, first_name,
         )
-        await db.commit()
 
 
 async def save_question(
     level: int, question: str, options: dict, correct: str
 ) -> None:
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "INSERT INTO questions (level, question, options, correct) VALUES (?, ?, ?, ?)",
-            (level, question, json.dumps(options, ensure_ascii=False), correct),
+    pool = _pool_get()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO questions (level, question, options, correct) VALUES ($1, $2, $3, $4)",
+            level, question, json.dumps(options, ensure_ascii=False), correct,
         )
-        await db.commit()
 
 
-def _tier_filter(level: int) -> str:
-    """Return WHERE clause for the difficulty tier of a given level."""
+def _tier_bounds(level: int) -> tuple[int, int]:
+    """Return (lo, hi) inclusive bounds for the difficulty tier."""
     if level <= 5:
-        return "level <= 5"
+        return (1, 5)
     elif level <= 10:
-        return "level BETWEEN 6 AND 10"
-    return "level > 10"
+        return (6, 10)
+    return (11, 99)
 
 
 async def get_recent_questions(level: int, limit: int = 40) -> list[str]:
     """Return recent question texts within the same difficulty tier."""
-    where = _tier_filter(level)
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute(
-            f"SELECT question FROM questions WHERE {where} ORDER BY ts DESC LIMIT ?",
-            (limit,),
-        ) as cur:
-            rows = await cur.fetchall()
-    return [r[0] for r in rows]
+    lo, hi = _tier_bounds(level)
+    pool = _pool_get()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT question FROM questions WHERE level >= $1 AND level <= $2 "
+            "ORDER BY ts DESC LIMIT $3",
+            lo, hi, limit,
+        )
+    return [r["question"] for r in rows]
 
 
 async def question_count() -> int:
-    async with aiosqlite.connect(DB_PATH) as db:
-        async with db.execute("SELECT COUNT(*) FROM questions") as cur:
-            row = await cur.fetchone()
-    return row[0] if row else 0
+    pool = _pool_get()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT COUNT(*) AS cnt FROM questions")
+    return row["cnt"] if row else 0
