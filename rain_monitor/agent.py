@@ -8,12 +8,28 @@ sends Telegram notification 1 hour before rain.
 """
 
 import json
+import logging
 import os
 from datetime import datetime, timedelta, timezone
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import httpx
 from openai import OpenAI
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+_log_dir = Path(__file__).parent / "logs"
+_log_dir.mkdir(exist_ok=True)
+
+_handler = RotatingFileHandler(
+    _log_dir / "rain_monitor.log", maxBytes=5_000_000, backupCount=3
+)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[_handler, logging.StreamHandler()],
+)
+logger = logging.getLogger("rain_monitor")
 
 # ── Config ────────────────────────────────────────────────────────────────────
 OPENAI_API_KEY    = os.environ.get("OPENAI_API_KEY", "")
@@ -90,6 +106,7 @@ def load_state() -> dict:
     try:
         return json.loads(STATE_FILE.read_text()) if STATE_FILE.exists() else {}
     except Exception:
+        logger.exception("Failed to load state file")
         return {}
 
 
@@ -163,18 +180,22 @@ def send_telegram(text: str) -> None:
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{ts}] Rain check started")
+    logger.info("Rain check started")
 
     try:
         forecast = fetch_forecast()
     except (httpx.TimeoutException, httpx.NetworkError, httpx.ProtocolError,
             httpx.HTTPStatusError) as exc:
-        print(f"  → Transient error fetching forecast (skipping): {exc}")
+        logger.warning("Transient error fetching forecast (skipping): %s", exc)
         return
-    print(f"  Forecast ({len(forecast)} slots):")
+    except Exception:
+        logger.exception("Unexpected error fetching forecast")
+        return
+
+    logger.info("Forecast (%d slots):", len(forecast))
     for s in forecast:
-        print(f"    +{s['in_hours']:4.1f}h  prob={s['prob_%']:3}%  mm={s['mm']:.1f}  wcode={s['wcode']}")
+        logger.info("  +%4.1fh  prob=%3d%%  mm=%.1f  wcode=%d",
+                    s["in_hours"], s["prob_%"], s["mm"], s["wcode"])
 
     # Find the nearest slot within 1 hour with rain likely
     rain_slot = next(
@@ -183,23 +204,31 @@ def main() -> None:
     )
 
     if rain_slot is None:
-        print("  → No rain expected within 1 hour. Nothing to do.")
+        logger.info("No rain expected within 1 hour. Nothing to do.")
         return
 
-    print(f"  → Rain detected: {rain_slot}")
+    logger.info("Rain detected: %s", rain_slot)
 
     if not can_alert():
         state = load_state()
-        print(f"  → Alert suppressed (last sent: {state.get('last_alert_utc')})")
+        logger.info("Alert suppressed (last sent: %s)", state.get("last_alert_utc"))
         return
 
-    print("  → Composing alert with AI...")
-    message = compose_alert(rain_slot)
-    print(f"  → Message: {message[:100]}")
+    logger.info("Composing alert with AI...")
+    try:
+        message = compose_alert(rain_slot)
+    except Exception:
+        logger.exception("Failed to compose AI alert")
+        return
+    logger.info("Message: %s", message[:100])
 
-    send_telegram(message)
+    try:
+        send_telegram(message)
+    except Exception:
+        logger.exception("Failed to send Telegram alert")
+        return
     mark_alerted()
-    print("  → Alert sent and state saved.")
+    logger.info("Alert sent and state saved.")
 
 
 if __name__ == "__main__":
