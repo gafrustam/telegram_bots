@@ -649,6 +649,155 @@ async def cb_stop_task(callback: CallbackQuery):
         await callback.answer("Нет активной задачи.")
 
 
+async def _transcribe_voice(path: str, mime: str) -> str | None:
+    from google import genai
+    from google.genai import types
+
+    client = genai.Client(api_key=os.getenv("GOOGLE_AI_API_KEY"))
+    model_name = os.getenv("GOOGLE_AUDIO_MODEL", "gemini-2.5-flash")
+
+    def _do():
+        with open(path, "rb") as f:
+            audio_bytes = f.read()
+        response = client.models.generate_content(
+            model=model_name,
+            contents=[
+                types.Part.from_bytes(data=audio_bytes, mime_type=mime),
+                types.Part.from_text(
+                    text="Transcribe the speech in this audio. Return only the transcribed text, nothing else."
+                ),
+            ],
+        )
+        return response.text.strip() or None
+
+    return await asyncio.to_thread(_do)
+
+
+EXT_BY_MIME = {
+    "audio/ogg": ".ogg",
+    "audio/oga": ".oga",
+    "audio/mpeg": ".mp3",
+    "audio/mp4": ".m4a",
+    "audio/webm": ".webm",
+    "video/mp4": ".mp4",
+}
+
+
+@router.message(F.voice)
+async def handle_voice(message: Message):
+    global _busy, _proc, _stop_requested
+    if _busy:
+        await message.answer("⏳ Уже выполняю задачу. Дождись завершения.")
+        return
+
+    _busy = True
+    _stop_requested = False
+    start_time = time.time()
+
+    status_msg = await message.answer("🎙 Транскрибирую голосовое сообщение...")
+    tmp_path = None
+
+    try:
+        voice = message.voice
+        mime = voice.mime_type or "audio/ogg"
+        tg_file = await message.bot.get_file(voice.file_id)
+        ext = EXT_BY_MIME.get(mime, ".ogg")
+
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            tmp_path = tmp.name
+        await message.bot.download_file(tg_file.file_path, tmp_path)
+
+        text = await _transcribe_voice(tmp_path, mime)
+    finally:
+        if tmp_path:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+
+    if not text or not text.strip():
+        _busy = False
+        await status_msg.edit_text("❌ Не удалось распознать голосовое сообщение.")
+        return
+
+    text = text.strip()
+    await status_msg.edit_text(f"🎙 <i>{text}</i>", parse_mode="HTML")
+
+    # Now process transcribed text exactly like a text command
+    status_msg2 = await message.answer("⏳ Запускаю Claude Code...", reply_markup=STOP_KB)
+    stop_event = asyncio.Event()
+    updater_task = asyncio.create_task(
+        _update_status(status_msg2, start_time, stop_event)
+    )
+
+    try:
+        old_head = _get_head()
+
+        cmd = [CLAUDE_PATH, "-p", text, "--dangerously-skip-permissions", "--output-format", "text"]
+        if text.lower() in CONTINUE_WORDS:
+            cmd.append("--continue")
+
+        env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+
+        _proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            cwd=REPO_ROOT,
+            env=env,
+        )
+
+        stdout, _ = await _proc.communicate()
+        output = stdout.decode("utf-8", errors="replace")
+        elapsed = int(time.time() - start_time)
+        mins, secs = divmod(elapsed, 60)
+
+        stop_event.set()
+
+        if _stop_requested:
+            try:
+                await status_msg2.edit_text(f"⏹ Остановлено ({mins}:{secs:02d})")
+            except Exception:
+                pass
+            if output.strip():
+                await _send_chunked(message.chat.id, output)
+            return
+
+        try:
+            await status_msg2.edit_text(f"✅ Готово за {mins}:{secs:02d}")
+        except Exception:
+            pass
+
+        if _is_rate_limited(output):
+            await message.answer("⚠️ Ассистент сообщает о rate limit. Попробуй позже.")
+
+        await _send_chunked(message.chat.id, output)
+        await _commit_and_push(message.chat.id)
+
+        changed_dirs = _get_changed_dirs(old_head)
+        if changed_dirs:
+            await _restart_services(changed_dirs, message.chat.id)
+
+        try:
+            await message.answer(f"\n{random.choice(CREATION_QUOTES)}")
+        except Exception:
+            pass
+
+    except Exception as e:
+        stop_event.set()
+        log.exception("Error running assistant (voice)")
+        try:
+            await message.answer(f"❌ Ошибка: {e}")
+        except Exception:
+            pass
+    finally:
+        _busy = False
+        _proc = None
+        if not updater_task.done():
+            stop_event.set()
+            updater_task.cancel()
+
+
 @router.message(F.photo)
 async def handle_photo(message: Message):
     global _busy, _proc, _stop_requested
