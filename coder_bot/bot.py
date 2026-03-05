@@ -398,34 +398,38 @@ async def _collect_voice_stats(env_path: str) -> str | None:
         return None
 
 
-async def _collect_interview_stats(db_path: str) -> str | None:
-    """Query Interview SQLite for today's activity."""
+async def _collect_interview_stats(env_path: str) -> str | None:
+    """Query Interview PostgreSQL for today's activity."""
     try:
-        import aiosqlite
-        if not Path(db_path).exists():
+        import asyncpg
+        env = dotenv_values(env_path)
+        dsn = env.get("DATABASE_URL")
+        if not dsn:
             return None
-        async with aiosqlite.connect(db_path) as db:
-            async with db.execute("""
+        conn = await asyncpg.connect(dsn=dsn, timeout=8)
+        try:
+            rows = await conn.fetch("""
                 SELECT DISTINCT u.user_id, u.username,
-                       (DATE(u.created_at) = DATE('now')) AS is_new
+                       (DATE(u.created_at) = CURRENT_DATE) AS is_new
                 FROM users u
                 JOIN user_problems up ON up.user_id = u.user_id
-                WHERE DATE(up.sent_at) = DATE('now')
-                   OR DATE(up.solved_at) = DATE('now')
-            """) as cur:
-                rows = await cur.fetchall()
+                WHERE DATE(up.sent_at) = CURRENT_DATE
+                   OR DATE(up.solved_at) = CURRENT_DATE
+            """)
+        finally:
+            await conn.close()
 
         if not rows:
             return None
 
         total = len(rows)
         all_names = [
-            f"@{r[1]}" if r[1] else f"id{r[0]}"
+            f"@{r['username']}" if r['username'] else f"id{r['user_id']}"
             for r in rows
         ]
         new_names = [
-            f"@{r[1]}" if r[1] else f"id{r[0]}"
-            for r in rows if r[2]
+            f"@{r['username']}" if r['username'] else f"id{r['user_id']}"
+            for r in rows if r['is_new']
         ]
         body = _format_user_list(all_names, total, new_names)
         return f"💼 Interview Bot\n{body}"
@@ -434,32 +438,36 @@ async def _collect_interview_stats(db_path: str) -> str | None:
         return None
 
 
-async def _collect_millionaire_stats(db_path: str) -> str | None:
-    """Query Millionaire SQLite for today's activity."""
+async def _collect_millionaire_stats(env_path: str) -> str | None:
+    """Query Millionaire PostgreSQL for today's activity."""
     try:
-        import aiosqlite
-        if not Path(db_path).exists():
+        import asyncpg
+        env = dotenv_values(env_path)
+        dsn = env.get("DATABASE_URL")
+        if not dsn:
             return None
-        async with aiosqlite.connect(db_path) as db:
-            async with db.execute("""
+        conn = await asyncpg.connect(dsn=dsn, timeout=8)
+        try:
+            rows = await conn.fetch("""
                 SELECT user_id, username,
-                       (DATE(created_at) = DATE('now')) AS is_new
+                       (DATE(created_at) = CURRENT_DATE) AS is_new
                 FROM users
-                WHERE DATE(last_visit) = DATE('now')
-            """) as cur:
-                rows = await cur.fetchall()
+                WHERE DATE(last_visit) = CURRENT_DATE
+            """)
+        finally:
+            await conn.close()
 
         if not rows:
             return None
 
         total = len(rows)
         all_names = [
-            f"@{r[1]}" if r[1] else f"id{r[0]}"
+            f"@{r['username']}" if r['username'] else f"id{r['user_id']}"
             for r in rows
         ]
         new_names = [
-            f"@{r[1]}" if r[1] else f"id{r[0]}"
-            for r in rows if r[2]
+            f"@{r['username']}" if r['username'] else f"id{r['user_id']}"
+            for r in rows if r['is_new']
         ]
         body = _format_user_list(all_names, total, new_names)
         return f"🏆 Millionaire Bot\n{body}"
@@ -468,20 +476,24 @@ async def _collect_millionaire_stats(db_path: str) -> str | None:
         return None
 
 
-async def _collect_monopoly_stats(db_path: str) -> str | None:
-    """Query Monopoly SQLite visits for today's activity."""
+async def _collect_monopoly_stats(env_path: str) -> str | None:
+    """Query Monopoly PostgreSQL visits for today's activity."""
     try:
-        import aiosqlite
-        if not Path(db_path).exists():
+        import asyncpg
+        env = dotenv_values(env_path)
+        dsn = env.get("DATABASE_URL")
+        if not dsn:
             return None
-        async with aiosqlite.connect(db_path) as db:
-            async with db.execute("""
-                SELECT COUNT(DISTINCT player_id) FROM visits
-                WHERE DATE(visited_at) = DATE('now')
-            """) as cur:
-                row = await cur.fetchone()
+        conn = await asyncpg.connect(dsn=dsn, timeout=8)
+        try:
+            row = await conn.fetchrow("""
+                SELECT COUNT(DISTINCT player_id) AS cnt FROM visits
+                WHERE DATE(visited_at) = CURRENT_DATE
+            """)
+        finally:
+            await conn.close()
 
-        count = row[0] if row else 0
+        count = row['cnt'] if row else 0
         if not count:
             return None
 
@@ -491,24 +503,28 @@ async def _collect_monopoly_stats(db_path: str) -> str | None:
         return None
 
 
-async def _collect_poker_stats(db_path: str) -> str | None:
-    """Query Poker SQLite for today's activity."""
+async def _collect_poker_stats(env_path: str) -> str | None:
+    """Query Poker PostgreSQL for today's activity."""
     try:
-        import aiosqlite
-        if not Path(db_path).exists():
+        import asyncpg
+        env = dotenv_values(env_path)
+        dsn = env.get("DATABASE_URL")
+        if not dsn:
             return None
-        async with aiosqlite.connect(db_path) as db:
-            async with db.execute("""
+        conn = await asyncpg.connect(dsn=dsn, timeout=8)
+        try:
+            rows = await conn.fetch("""
                 SELECT user_id FROM game_sessions
-                WHERE DATE(updated_at) = DATE('now')
-            """) as cur:
-                rows = await cur.fetchall()
+                WHERE DATE(updated_at) = CURRENT_DATE
+            """)
+        finally:
+            await conn.close()
 
         if not rows:
             return None
 
         total = len(rows)
-        all_names = [str(r[0]) for r in rows]
+        all_names = [str(r['user_id']) for r in rows]
         # Poker DB has no registration date, so no "new" distinction
         if total <= 10:
             body = f"  Активных: {total}\n  Пользователи: {', '.join(all_names)}"
@@ -551,22 +567,22 @@ async def _send_daily_stats():
         sections.append(s)
 
     # Interview bot
-    s = await _collect_interview_stats(f"{REPO_ROOT}/interview_bot/interview.db")
+    s = await _collect_interview_stats(f"{REPO_ROOT}/interview_bot/.env")
     if s:
         sections.append(s)
 
     # Millionaire bot
-    s = await _collect_millionaire_stats(f"{REPO_ROOT}/millionaire_bot/millionaire.db")
+    s = await _collect_millionaire_stats(f"{REPO_ROOT}/millionaire_bot/.env")
     if s:
         sections.append(s)
 
     # Monopoly
-    s = await _collect_monopoly_stats(f"{REPO_ROOT}/monopoly_bot/monopoly.db")
+    s = await _collect_monopoly_stats(f"{REPO_ROOT}/monopoly_bot/.env")
     if s:
         sections.append(s)
 
     # Poker
-    s = await _collect_poker_stats(f"{REPO_ROOT}/poker_bot/poker.db")
+    s = await _collect_poker_stats(f"{REPO_ROOT}/poker_bot/.env")
     if s:
         sections.append(s)
 
