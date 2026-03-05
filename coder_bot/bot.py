@@ -199,13 +199,295 @@ def _is_rate_limited(output: str) -> bool:
     )
 
 
-async def _send_chunked(chat_id: int, text: str):
+def _escape_html(text: str) -> str:
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _markdown_to_html(text: str) -> str:
+    """Convert Claude markdown output to Telegram HTML."""
+    result = []
+    i = 0
+    lines = text.split("\n")
+    in_code_block = False
+    code_lang = ""
+    code_lines: list[str] = []
+
+    for line in lines:
+        # Code block start/end
+        if line.startswith("```"):
+            if not in_code_block:
+                in_code_block = True
+                code_lang = line[3:].strip()
+                code_lines = []
+            else:
+                # Close code block
+                in_code_block = False
+                code_content = _escape_html("\n".join(code_lines))
+                if code_lang:
+                    result.append(f'<pre><code class="language-{code_lang}">{code_content}</code></pre>')
+                else:
+                    result.append(f"<pre>{code_content}</pre>")
+                code_lang = ""
+            continue
+
+        if in_code_block:
+            code_lines.append(line)
+            continue
+
+        # Horizontal rule
+        if re.match(r"^[-*_]{3,}\s*$", line):
+            result.append("─" * 20)
+            continue
+
+        # Headings
+        m = re.match(r"^(#{1,6})\s+(.*)", line)
+        if m:
+            level = len(m.group(1))
+            content = _inline_markdown_to_html(m.group(2).strip())
+            if level <= 2:
+                result.append(f"\n<b>{content.upper()}</b>")
+            else:
+                result.append(f"<b>{content}</b>")
+            continue
+
+        # Bullet list
+        m = re.match(r"^(\s*)[*\-+]\s+(.*)", line)
+        if m:
+            indent = len(m.group(1)) // 2
+            content = _inline_markdown_to_html(m.group(2))
+            prefix = "  " * indent + "•"
+            result.append(f"{prefix} {content}")
+            continue
+
+        # Numbered list
+        m = re.match(r"^(\s*)\d+\.\s+(.*)", line)
+        if m:
+            indent = len(m.group(1)) // 2
+            content = _inline_markdown_to_html(m.group(2))
+            prefix = "  " * indent
+            result.append(f"{prefix}{content}")
+            continue
+
+        # Normal line
+        result.append(_inline_markdown_to_html(line))
+
+    # Unclosed code block
+    if in_code_block and code_lines:
+        code_content = _escape_html("\n".join(code_lines))
+        result.append(f"<pre>{code_content}</pre>")
+
+    return "\n".join(result)
+
+
+def _inline_markdown_to_html(text: str) -> str:
+    """Convert inline markdown (bold, italic, code) to Telegram HTML."""
+    # Protect inline code first
+    parts = re.split(r"(`[^`]+`)", text)
+    out = []
+    for part in parts:
+        if part.startswith("`") and part.endswith("`") and len(part) > 1:
+            code = _escape_html(part[1:-1])
+            out.append(f"<code>{code}</code>")
+        else:
+            p = _escape_html(part)
+            # Bold: **text** or __text__
+            p = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", p)
+            p = re.sub(r"__(.+?)__", r"<b>\1</b>", p)
+            # Italic: *text* or _text_ (not inside words)
+            p = re.sub(r"(?<!\w)\*(?!\s)(.+?)(?<!\s)\*(?!\w)", r"<i>\1</i>", p)
+            p = re.sub(r"(?<!\w)_(?!\s)(.+?)(?<!\s)_(?!\w)", r"<i>\1</i>", p)
+            # Strikethrough: ~~text~~
+            p = re.sub(r"~~(.+?)~~", r"<s>\1</s>", p)
+            out.append(p)
+    return "".join(out)
+
+
+def _extract_tables(text: str) -> list[tuple[str, bool]]:
+    """
+    Split text into (segment, is_table) chunks.
+    Returns list of (text, is_table) tuples.
+    """
+    lines = text.split("\n")
+    segments: list[tuple[str, bool]] = []
+    current: list[str] = []
+    in_table = False
+
+    for line in lines:
+        is_table_line = bool(re.match(r"^\s*\|", line))
+        if is_table_line != in_table:
+            if current:
+                segments.append(("\n".join(current), in_table))
+            current = [line]
+            in_table = is_table_line
+        else:
+            current.append(line)
+
+    if current:
+        segments.append(("\n".join(current), in_table))
+
+    return segments
+
+
+def _parse_md_table(table_text: str) -> tuple[list[str], list[list[str]]]:
+    """Parse markdown table into headers and rows."""
+    lines = [l.strip() for l in table_text.strip().splitlines() if l.strip()]
+    # Filter out separator lines (---|---)
+    data_lines = [l for l in lines if not re.match(r"^[\|\s\-:]+$", l)]
+
+    def split_row(line: str) -> list[str]:
+        parts = line.strip("|").split("|")
+        return [p.strip() for p in parts]
+
+    if not data_lines:
+        return [], []
+
+    headers = split_row(data_lines[0])
+    rows = [split_row(l) for l in data_lines[1:]]
+    return headers, rows
+
+
+def _table_to_image(table_text: str) -> bytes | None:
+    """Render a markdown table as a PNG image. Returns PNG bytes or None."""
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import io
+
+        headers, rows = _parse_md_table(table_text)
+        if not headers or not rows:
+            return None
+
+        # Normalize column count
+        ncols = max(len(headers), max((len(r) for r in rows), default=0))
+        headers = headers + [""] * (ncols - len(headers))
+        rows = [r + [""] * (ncols - len(r)) for r in rows]
+
+        nrows = len(rows)
+        col_width = max(2.0, 10.0 / ncols)
+        fig_w = col_width * ncols + 0.5
+        fig_h = 0.5 + (nrows + 1) * 0.4
+
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+        ax.axis("off")
+        fig.patch.set_facecolor("#1e2128")
+
+        # Build table data
+        cell_text = rows
+        table = ax.table(
+            cellText=cell_text,
+            colLabels=headers,
+            cellLoc="center",
+            loc="center",
+        )
+        table.auto_set_font_size(False)
+        table.set_fontsize(10)
+        table.scale(1, 1.4)
+
+        # Style: dark theme
+        for (row_idx, col_idx), cell in table.get_celld().items():
+            cell.set_edgecolor("#444")
+            if row_idx == 0:
+                cell.set_facecolor("#2d5a8e")
+                cell.set_text_props(color="white", fontweight="bold")
+            elif row_idx % 2 == 0:
+                cell.set_facecolor("#2a2d35")
+                cell.set_text_props(color="#e0e0e0")
+            else:
+                cell.set_facecolor("#22252c")
+                cell.set_text_props(color="#e0e0e0")
+
+        plt.tight_layout(pad=0.3)
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png", dpi=130, bbox_inches="tight",
+                    facecolor=fig.get_facecolor())
+        plt.close(fig)
+        buf.seek(0)
+        return buf.read()
+    except Exception:
+        log.exception("Table image generation failed")
+        return None
+
+
+async def _send_formatted(chat_id: int, text: str):
+    """Send Claude output with proper Telegram HTML formatting and table images."""
     if not text.strip():
         await bot.send_message(chat_id, "⚠️ Ассистент вернул пустой ответ.")
         return
-    for i in range(0, len(text), MAX_MSG_LEN):
-        chunk = text[i : i + MAX_MSG_LEN]
-        await bot.send_message(chat_id, chunk)
+
+    # Split code blocks out — protect them from table detection
+    # First handle the full text: split into table / non-table segments
+    # But we must not split inside code fences
+    segments = _extract_tables_safe(text)
+
+    for segment, is_table in segments:
+        if not segment.strip():
+            continue
+        if is_table:
+            img_bytes = await asyncio.to_thread(_table_to_image, segment)
+            if img_bytes:
+                from aiogram.types import BufferedInputFile
+                await bot.send_photo(
+                    chat_id,
+                    BufferedInputFile(img_bytes, filename="table.png"),
+                )
+                continue
+            # Fallback: monospace
+            html = "<pre>" + _escape_html(segment) + "</pre>"
+            await _send_html_chunked(chat_id, html)
+        else:
+            html = _markdown_to_html(segment)
+            await _send_html_chunked(chat_id, html)
+
+
+def _extract_tables_safe(text: str) -> list[tuple[str, bool]]:
+    """
+    Split text into (segment, is_table) tuples, but do NOT look inside code fences.
+    """
+    # First, extract code fences and replace with placeholders
+    code_blocks: dict[str, str] = {}
+    counter = [0]
+
+    def replace_code(m):
+        key = f"\x00CODE{counter[0]}\x00"
+        code_blocks[key] = m.group(0)
+        counter[0] += 1
+        return key
+
+    safe_text = re.sub(r"```[\s\S]*?```", replace_code, text)
+
+    # Now split by tables
+    segments = _extract_tables(safe_text)
+
+    # Restore code blocks
+    result = []
+    for seg, is_table in segments:
+        restored = seg
+        for key, val in code_blocks.items():
+            restored = restored.replace(key, val)
+        result.append((restored, is_table))
+
+    return result
+
+
+async def _send_html_chunked(chat_id: int, html: str):
+    """Send HTML-formatted text, chunking at MAX_MSG_LEN."""
+    if not html.strip():
+        return
+    # Split by newlines to avoid cutting in the middle of a tag
+    # Simple approach: chunk by character limit
+    while html:
+        chunk = html[:MAX_MSG_LEN]
+        html = html[MAX_MSG_LEN:]
+        try:
+            await bot.send_message(chat_id, chunk, parse_mode="HTML")
+        except Exception:
+            # If HTML parse error, send as plain text
+            try:
+                plain = re.sub(r"<[^>]+>", "", chunk)
+                await bot.send_message(chat_id, plain)
+            except Exception:
+                log.exception("Failed to send message chunk")
 
 
 # ── Daily stats ──────────────────────────────────────────────────────────────
@@ -776,7 +1058,7 @@ async def handle_voice(message: Message):
             except Exception:
                 pass
             if output.strip():
-                await _send_chunked(message.chat.id, output)
+                await _send_formatted(message.chat.id, output)
             return
 
         try:
@@ -787,7 +1069,7 @@ async def handle_voice(message: Message):
         if _is_rate_limited(output):
             await message.answer("⚠️ Ассистент сообщает о rate limit. Попробуй позже.")
 
-        await _send_chunked(message.chat.id, output)
+        await _send_formatted(message.chat.id, output)
         await _commit_and_push(message.chat.id)
 
         changed_dirs = _get_changed_dirs(old_head)
@@ -871,7 +1153,7 @@ async def handle_photo(message: Message):
             except Exception:
                 pass
             if output.strip():
-                await _send_chunked(message.chat.id, output)
+                await _send_formatted(message.chat.id, output)
             return
 
         try:
@@ -882,7 +1164,7 @@ async def handle_photo(message: Message):
         if _is_rate_limited(output):
             await message.answer("⚠️ Ассистент сообщает о rate limit. Попробуй позже.")
 
-        await _send_chunked(message.chat.id, output)
+        await _send_formatted(message.chat.id, output)
 
         await _commit_and_push(message.chat.id)
 
@@ -964,7 +1246,7 @@ async def handle_task(message: Message):
             except Exception:
                 pass
             if output.strip():
-                await _send_chunked(message.chat.id, output)
+                await _send_formatted(message.chat.id, output)
             return
 
         try:
@@ -975,7 +1257,7 @@ async def handle_task(message: Message):
         if _is_rate_limited(output):
             await message.answer("⚠️ Ассистент сообщает о rate limit. Попробуй позже.")
 
-        await _send_chunked(message.chat.id, output)
+        await _send_formatted(message.chat.id, output)
 
         await _commit_and_push(message.chat.id)
 
