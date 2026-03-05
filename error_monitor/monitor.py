@@ -127,6 +127,7 @@ OUR_CODE_RE = re.compile(r'File "/home/ubuntu/telegram_bots/')
 
 seen_errors: dict[str, float] = {}     # hash → last_seen_ts
 fixing_now: set[str]          = set()  # services currently being fixed
+known_transient: set[str]     = set()  # hashes of errors that don't need intervention (silent after first time)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -251,6 +252,10 @@ async def handle_error(service: str, trigger_line: str, working_dir: str) -> Non
     if key in seen_errors and now - seen_errors[key] < COOLDOWN_SEC:
         logger.info("Suppressed duplicate error in %s (cooldown)", service)
         return
+    # If this error previously required no intervention, stay silent forever
+    if key in known_transient:
+        logger.info("Suppressed known transient error in %s", service)
+        return
     seen_errors[key] = now
 
     fixing_now.add(service)
@@ -273,6 +278,7 @@ async def handle_error(service: str, trigger_line: str, working_dir: str) -> Non
                 f"ℹ️ <b>{service}</b>: ошибка не в коде "
                 f"(сеть / внешний сервис). Ручное вмешательство не требуется."
             )
+            known_transient.add(key)
             return
 
         # ── Step 3: fix ────────────────────────────────────
