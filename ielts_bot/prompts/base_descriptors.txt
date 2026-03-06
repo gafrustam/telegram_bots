@@ -36,6 +36,11 @@ Band 4:
 - Cannot respond without noticeable pauses and may speak slowly, with frequent repetition and self-correction
 - Links basic sentences but with repetitious use of simple connectives and some breakdowns in coherence
 
+Band 3:
+- Can only produce isolated words or very short formulaic phrases with minimal control
+- Long silences or unintelligible stretches are common; cannot develop any topic coherently
+- Communication breaks down repeatedly even on familiar subjects
+
 ────────────────────────────────
 2. LEXICAL RESOURCE (LR)
 ────────────────────────────────
@@ -66,6 +71,11 @@ Band 4:
 - Is able to talk about familiar topics but can only convey basic meaning on unfamiliar topics and makes frequent errors in word choice
 - Rarely attempts paraphrase
 
+Band 3:
+- Vocabulary is severely limited — relies on a handful of very basic, high-frequency words
+- Frequent and severe word-choice errors cause major misunderstanding
+- Cannot paraphrase; resorts to repetition or silence when vocabulary runs out
+
 ────────────────────────────────
 3. GRAMMATICAL RANGE AND ACCURACY (GRA)
 ────────────────────────────────
@@ -93,6 +103,11 @@ Band 5:
 Band 4:
 - Produces basic sentence forms and some correct simple sentences but subordinate structures are rare
 - Errors are frequent and may lead to misunderstanding
+
+Band 3:
+- Can produce only isolated words or very short fixed phrases
+- Attempts at sentences regularly fail or become incomprehensible
+- Pervasive errors cause severe and frequent communication breakdown
 
 ────────────────────────────────
 4. PRONUNCIATION (P)
@@ -124,6 +139,36 @@ Band 4:
 - Attempts to control features but lapses are frequent
 - Mispronunciations are frequent and cause some difficulty for the listener
 
+Band 3:
+- Rarely uses pronunciation features with any control
+- Mispronunciations of sounds and words cause regular and severe difficulty for the listener
+- Heavy L1 interference makes sustained comprehension very difficult
+
+═══════════════════════════════════════
+SCORING CALIBRATION — READ BEFORE ASSIGNING ANY SCORE
+═══════════════════════════════════════
+
+DO NOT default to the 5.5–6.5 range. Every band score must be justified by specific, concrete evidence from the audio.
+
+Practical benchmark descriptions for calibration:
+- Band 9: Indistinguishable from an educated native speaker. Extremely rare in practice.
+- Band 8: Near-native proficiency. Only occasional, non-systematic slips. Very rare.
+- Band 7: Strong non-native speaker. Clearly comfortable and sophisticated — NOT the default for a "decent" or "pretty good" performance.
+- Band 6: Competent but clearly non-native. Can sustain conversation, but effort and L1 limitations are APPARENT. Band 6 is ONLY valid if the candidate does NOT frequently pause to search for language or vocabulary.
+- Band 5: Communicates but is clearly limited. Vocabulary range and grammar restrict what can be expressed. Frequent visible effort to find words.
+- Band 4: Clear difficulty communicating even on familiar topics. Regular breakdowns.
+- Band 3 and below: Severe difficulty; mostly isolated words or formulaic phrases.
+
+STRICT CHECKS — before assigning Band 6 or higher on any criterion, confirm the following:
+- FC 6+: Does the candidate sustain speech WITHOUT frequent pauses to search for words or grammar? (Thinking pauses are fine; language-search pauses are not.)
+- LR 6+: Does the candidate REGULARLY use vocabulary beyond basic high-frequency words? Are collocations generally natural?
+- GRA 6+: Does the candidate attempt AND mostly succeed with complex structures (conditionals, passives, relative clauses, etc.)?
+- P 6+: Is the candidate clearly intelligible throughout, with mispronunciation only occasionally affecting clarity?
+
+If ANY of these checks FAIL for a given criterion, that criterion must NOT receive Band 6 or higher.
+
+When performance is MIXED (some moments at Band 7, some at Band 5), score the band that describes the MAJORITY and SUSTAINED level of the performance — not the best moments.
+
 ═══════════════════════════════════════
 EXAMINER TRAINING GUIDELINES
 ═══════════════════════════════════════
@@ -153,6 +198,6 @@ When assessing, apply these principles used in official IELTS examiner training:
    - Key features: individual sounds, word stress, sentence stress, intonation, connected speech, rhythm.
    - At Band 6+, the candidate should use features like stress and intonation to convey meaning.
 
-7. BENEFIT OF THE DOUBT: If a candidate's performance falls between two bands, consider which band BETTER DESCRIBES the overall performance. Do not automatically round down.
+7. SCORE INTEGRITY: If a candidate's performance falls between two bands, assign the band that BETTER DESCRIBES the sustained, overall performance — not their best moments and not their worst. Do NOT automatically round up or round down. A performance that occasionally reaches Band 7 quality but mostly operates at Band 5–6 should be scored 5 or 6, not 7. Score what you actually heard across the full sample.
 
 8. CONTENT vs LANGUAGE: You are assessing LANGUAGE PROFICIENCY, not the quality of ideas. A simple but well-expressed answer can score higher than a sophisticated idea expressed poorly.

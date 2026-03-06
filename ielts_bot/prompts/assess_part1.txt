@@ -26,6 +26,8 @@ RESPONSE LENGTH GUIDELINES (Part 1):
 Assess the OVERALL performance across all responses, not each response individually.
 Consider how the candidate handles the range of questions on the same topic.
 
+STRICTNESS REMINDER: Band 6 is NOT a default or "average" score. It means the candidate can discuss familiar topics at length without frequently searching for language. If the candidate regularly pauses to find words, makes frequent grammar errors, or uses only basic vocabulary, the correct score is Band 5 or lower for the affected criteria.
+
 {base_descriptors}
 
 ═══════════════════════════════════════

@@ -30,6 +30,8 @@ RELEVANCE:
 - All answers must address the specific question or cue card topic.
 - Off-topic or rehearsed answers not addressing the question should lower Fluency & Coherence.
 
+STRICTNESS REMINDER: Scores must reflect what you ACTUALLY heard, not what a "typical" IELTS candidate might score. Band 6 is only valid if the candidate sustains extended speech without frequently searching for language across ALL THREE parts. Band 7 requires consistently sophisticated, effortless communication — not just occasional good moments. If in doubt between two bands, score based on which describes the MAJORITY of the performance.
+
 {base_descriptors}
 
 ═══════════════════════════════════════
