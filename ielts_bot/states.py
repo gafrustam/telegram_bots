@@ -29,3 +29,7 @@ class InterruptAction(CallbackData, prefix="interrupt"):
 
 class QuestionAction(CallbackData, prefix="question"):
     action: str  # "replay"
+
+
+class NextPartAction(CallbackData, prefix="nextpart"):
+    next_part: int

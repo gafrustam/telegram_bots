@@ -35,16 +35,18 @@ from keyboards import (
     PART1_BTN,
     PART2_BTN,
     PART3_BTN,
+    START_BTN,
     WEBAPP_BTN,
     interrupt_keyboard,
     main_menu_keyboard,
+    next_part_keyboard,
     question_keyboard,
     results_keyboard,
     start_keyboard,
     topic_keyboard,
 )
 from questions import generate_session
-from states import InterruptAction, QuestionAction, ResultAction, SpeakingStates, TopicAction
+from states import InterruptAction, NextPartAction, QuestionAction, ResultAction, SpeakingStates, TopicAction
 from tts import text_to_voice
 
 os.makedirs("logs", exist_ok=True)
@@ -69,20 +71,17 @@ _admin_ids: set[int] = set()
 WELCOME_TEXT = (
     "🎓 <b>IELTS Speaking Practice</b>\n"
     "\n"
-    "В этом боте ты сможешь тренировать свой спикинг.\n"
+    "Тренируй спикинг в формате реального экзамена.\n"
     "\n"
-    "Официальный экзамен состоит из 3 частей:\n"
+    "Тест проходится полностью — все 3 части по порядку:\n"
     "🗣 <b>Part 1</b> — Interview (вопросы на повседневные темы)\n"
     "🎙 <b>Part 2</b> — Long Turn (монолог 2 минуты по карточке)\n"
     "💬 <b>Part 3</b> — Discussion (обсуждение абстрактных тем)\n"
     "\n"
-    "Здесь ты можешь потренировать их по отдельности.\n"
-    "Попробуй ответить на вопросы, получи обратную связь,\n"
-    "проанализируй и попробуй ещё раз — отточи свой ответ\n"
-    "до совершенства. Это существенно поднимет твою оценку\n"
-    "на экзамене! 🚀\n"
+    "После каждой части ты получишь оценку и рекомендации.\n"
+    "По завершении всех трёх — сможешь пройти тест заново.\n"
     "\n"
-    "👇 <b>Выбери раздел в меню ниже</b>"
+    "👇 <b>Нажми «Начать тест»</b>"
 )
 
 HELP_TEXT = (
@@ -228,15 +227,12 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
         "cmd_start: user_id=%d username=%s is_admin=%s admin_ids=%s",
         user.id, user.username, is_adm, _admin_ids,
     )
-    # TEXT INTERFACE DISABLED: showing compact welcome with Web App button only.
-    # RESTORE: replace with WELCOME_TEXT and re-enable state below.
     await message.answer(
-        "🎓 <b>IELTS Speaking Practice</b>\n\n"
-        "Нажми кнопку <b>Запустить приложение</b> ниже, чтобы открыть тренажёр.",
+        WELCOME_TEXT,
         parse_mode=ParseMode.HTML,
         reply_markup=main_menu_keyboard(is_admin=is_adm),
     )
-    # RESTORE: await state.set_state(SpeakingStates.choosing_part)
+    await state.set_state(SpeakingStates.choosing_part)
 
 
 # ── /help ────────────────────────────────────────────────
@@ -353,19 +349,15 @@ async def _generate_topic_session(
 
 # ── Part selection ───────────────────────────────────────
 
-@router.message(SpeakingStates.choosing_part, F.text.in_({PART1_BTN, PART2_BTN, PART3_BTN}))
-async def handle_part_selection(message: Message, state: FSMContext) -> None:
-    part_map = {PART1_BTN: 1, PART2_BTN: 2, PART3_BTN: 3}
-    part = part_map[message.text]
-
+@router.message(SpeakingStates.choosing_part, F.text == START_BTN)
+async def handle_start_test(message: Message, state: FSMContext) -> None:
     await state.update_data(
-        part=part,
+        part=1,
         current_q_index=0,
         audio_file_ids=[],
         audio_durations=[],
     )
-
-    text = f"📝 <b>{PART_NAMES[part]}</b>\n\n{PART_INSTRUCTIONS[part]}"
+    text = f"📝 <b>{PART_NAMES[1]} — Часть 1 из 3</b>\n\n{PART_INSTRUCTIONS[1]}"
     await message.answer(
         text,
         parse_mode=ParseMode.HTML,
@@ -436,10 +428,10 @@ async def handle_accept_topic(callback: CallbackQuery, state: FSMContext) -> Non
     )
     await bot.send_chat_action(callback.message.chat.id, ChatAction.TYPING)
 
-    # For Part 3, try to link to the user's last Part 2 topic
+    # For Part 3, use Part 2 topic from the current session
     related_topic = None
     if part == 3:
-        related_topic = await database.get_last_part2_topic(callback.from_user.id)
+        related_topic = data.get("part2_topic") or await database.get_last_part2_topic(callback.from_user.id)
 
     try:
         session = await _generate_topic_session(part, callback.from_user.id, related_topic)
@@ -872,11 +864,20 @@ async def _run_assessment(message: Message, state: FSMContext) -> None:
             for chunk in _split_message(response_text):
                 await message.answer(chunk, parse_mode=ParseMode.HTML)
 
-        await message.answer(
-            "Если хочешь — попробуй ещё раз ту же тему. "
-            "Или просто выбери другой раздел в меню снизу 👇",
-            reply_markup=results_keyboard(),
-        )
+        if part < 3:
+            next_p = part + 1
+            await message.answer(
+                f"✅ <b>Part {part} завершена!</b>\n\n"
+                f"Готов перейти к <b>{PART_NAMES[next_p]}</b>?",
+                parse_mode=ParseMode.HTML,
+                reply_markup=next_part_keyboard(next_p),
+            )
+        else:
+            await message.answer(
+                "🎉 <b>Тест завершён! Все три части пройдены.</b>\n\n"
+                "Хочешь пройти ещё раз?",
+                reply_markup=results_keyboard(),
+            )
 
     except Exception as e:
         from openai import RateLimitError as OpenAIRateLimitError
@@ -899,36 +900,28 @@ async def _run_assessment(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(ResultAction.filter(F.action == "retry"), SpeakingStates.viewing_results)
 async def handle_retry(callback: CallbackQuery, state: FSMContext) -> None:
-    data = await state.get_data()
-    part = data["part"]
-
-    # Create a new DB session for the retry
-    db_session_id = await database.create_session(
-        user_id=callback.from_user.id,
-        part=part,
-        topic=data["topic"],
-        questions=data.get("questions") or None,
-        cue_card=data.get("cue_card") or None,
-    )
-
-    await state.update_data(
-        audio_file_ids=[],
-        audio_durations=[],
-        current_q_index=0,
-        db_session_id=db_session_id,
-    )
-
     await callback.answer()
     await callback.message.edit_reply_markup(reply_markup=None)
 
-    if part == 1:
-        await state.set_state(SpeakingStates.part1_answering)
-        await _send_question(callback.message, state, 0)
-    elif part == 2:
-        asyncio.create_task(_start_part2_countdown(callback.message.chat.id, state))
-    else:
-        await state.set_state(SpeakingStates.part3_answering)
-        await _send_question(callback.message, state, 0)
+    await state.update_data(
+        part=1,
+        current_q_index=0,
+        audio_file_ids=[],
+        audio_durations=[],
+        db_session_id=None,
+        topic=None,
+        questions=[],
+        cue_card="",
+        part2_topic=None,
+    )
+
+    text = f"📝 <b>{PART_NAMES[1]} — Часть 1 из 3</b>\n\n{PART_INSTRUCTIONS[1]}"
+    await callback.message.answer(
+        text,
+        parse_mode=ParseMode.HTML,
+        reply_markup=start_keyboard(),
+    )
+    await state.set_state(SpeakingStates.choosing_topic)
 
 
 @router.callback_query(ResultAction.filter(F.action == "menu"), SpeakingStates.viewing_results)
@@ -937,7 +930,7 @@ async def handle_back_to_menu(callback: CallbackQuery, state: FSMContext) -> Non
     await callback.message.edit_reply_markup(reply_markup=None)
     await state.clear()
     await callback.message.answer(
-        "👇 Выбери раздел экзамена:",
+        "👇 Нажми «Начать тест», чтобы начать снова:",
         reply_markup=main_menu_keyboard(
             is_admin=_is_admin(callback.from_user.id, callback.from_user.username),
         ),
@@ -945,55 +938,76 @@ async def handle_back_to_menu(callback: CallbackQuery, state: FSMContext) -> Non
     await state.set_state(SpeakingStates.choosing_part)
 
 
-# ── Interrupt: part button pressed during active session ──
+@router.callback_query(NextPartAction.filter(), SpeakingStates.viewing_results)
+async def handle_next_part(
+    callback: CallbackQuery, callback_data: NextPartAction, state: FSMContext,
+) -> None:
+    next_part = callback_data.next_part
+    data = await state.get_data()
 
-ACTIVE_STATES = {
-    SpeakingStates.choosing_topic,
-    SpeakingStates.entering_custom_topic,
-    SpeakingStates.part1_answering,
-    SpeakingStates.part2_preparing,
-    SpeakingStates.part2_answering,
-    SpeakingStates.part3_answering,
-    SpeakingStates.assessing,
-    SpeakingStates.viewing_results,
-}
+    await callback.answer()
+    await callback.message.edit_reply_markup(reply_markup=None)
 
-PART_MAP = {PART1_BTN: 1, PART2_BTN: 2, PART3_BTN: 3}
+    updates: dict = {
+        "part": next_part,
+        "current_q_index": 0,
+        "audio_file_ids": [],
+        "audio_durations": [],
+    }
+    if next_part == 3:
+        updates["part2_topic"] = data.get("topic")
+
+    await state.update_data(**updates)
+
+    part_label = f"Часть {next_part} из 3"
+    text = f"📝 <b>{PART_NAMES[next_part]} — {part_label}</b>\n\n{PART_INSTRUCTIONS[next_part]}"
+    await callback.message.answer(
+        text,
+        parse_mode=ParseMode.HTML,
+        reply_markup=start_keyboard(),
+    )
+    await state.set_state(SpeakingStates.choosing_topic)
 
 
-@router.message(F.text.in_({PART1_BTN, PART2_BTN, PART3_BTN}))
-async def handle_part_while_active(message: Message, state: FSMContext) -> None:
+# ── Interrupt: test button pressed during active session ──
+
+@router.message(F.text == START_BTN)
+async def handle_start_while_active(message: Message, state: FSMContext) -> None:
     current = await state.get_state()
     if current is None:
         await message.answer("Нажми /start, чтобы начать.")
         return
 
-    # No active session yet or session already finished — switch freely
+    # Safe states — restart freely
     if current in (
+        SpeakingStates.choosing_part.state,
         SpeakingStates.choosing_topic.state,
         SpeakingStates.entering_custom_topic.state,
         SpeakingStates.viewing_results.state,
     ):
         await state.clear()
-        await state.set_state(SpeakingStates.choosing_part)
-        await handle_part_selection(message, state)
+        await state.update_data(part=1, current_q_index=0, audio_file_ids=[], audio_durations=[])
+        text = f"📝 <b>{PART_NAMES[1]} — Часть 1 из 3</b>\n\n{PART_INSTRUCTIONS[1]}"
+        await message.answer(text, parse_mode=ParseMode.HTML, reply_markup=start_keyboard())
+        await state.set_state(SpeakingStates.choosing_topic)
         return
 
     data = await state.get_data()
     current_part = data.get("part")
-    new_part = PART_MAP[message.text]
 
     if current_part:
         await message.answer(
-            f"⚠️ У тебя уже начата <b>{PART_NAMES[current_part]}</b>.\n"
+            f"⚠️ У тебя уже идёт <b>{PART_NAMES[current_part]}</b>.\n"
             "Что хочешь сделать?",
             parse_mode=ParseMode.HTML,
-            reply_markup=interrupt_keyboard(new_part),
+            reply_markup=interrupt_keyboard(1),
         )
     else:
         await state.clear()
-        await state.set_state(SpeakingStates.choosing_part)
-        await handle_part_selection(message, state)
+        await state.update_data(part=1, current_q_index=0, audio_file_ids=[], audio_durations=[])
+        text = f"📝 <b>{PART_NAMES[1]} — Часть 1 из 3</b>\n\n{PART_INSTRUCTIONS[1]}"
+        await message.answer(text, parse_mode=ParseMode.HTML, reply_markup=start_keyboard())
+        await state.set_state(SpeakingStates.choosing_topic)
 
 
 @router.callback_query(InterruptAction.filter(F.action == "continue"))
@@ -1006,7 +1020,6 @@ async def handle_interrupt_continue(callback: CallbackQuery, state: FSMContext) 
 async def handle_interrupt_new(
     callback: CallbackQuery, callback_data: InterruptAction, state: FSMContext,
 ) -> None:
-    new_part = callback_data.new_part
     # Cancel current session in DB
     data = await state.get_data()
     db_session_id = data.get("db_session_id")
@@ -1018,13 +1031,13 @@ async def handle_interrupt_new(
 
     await state.clear()
     await state.update_data(
-        part=new_part,
+        part=1,
         current_q_index=0,
         audio_file_ids=[],
         audio_durations=[],
     )
 
-    text = f"📝 <b>{PART_NAMES[new_part]}</b>\n\n{PART_INSTRUCTIONS[new_part]}"
+    text = f"📝 <b>{PART_NAMES[1]} — Часть 1 из 3</b>\n\n{PART_INSTRUCTIONS[1]}"
     await callback.message.answer(
         text,
         parse_mode=ParseMode.HTML,
