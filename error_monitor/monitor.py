@@ -34,6 +34,29 @@ BOT_ROOT = "/home/ubuntu/telegram_bots"
 # Services to always exclude from monitoring (e.g. the monitor itself)
 EXCLUDED_SERVICES: set[str] = {"error-monitor"}
 
+# ── Nginx config ──────────────────────────────────────────
+NGINX_ACCESS_LOG = "/var/log/nginx/ru.access.log"
+NGINX_ERROR_LOG  = "/var/log/nginx/ru.error.log"
+
+# URL path prefix → systemd service name (for error attribution)
+URL_TO_SERVICE: dict[str, str] = {
+    "/monopoly": "monopoly-server",
+    "/ielts":    "ielts-server",
+    "/poker":    "poker-server",
+}
+
+# Populated by discover_services() in main(); shared with nginx watchers
+_discovered_services: dict[str, str] = {}
+
+
+def _url_to_service(path: str) -> tuple[str | None, str | None]:
+    """Map a URL path to (service_name, working_dir), or (None, None) if unknown."""
+    for prefix, svc in URL_TO_SERVICE.items():
+        if path.startswith(prefix):
+            wd = _discovered_services.get(svc)
+            return svc, wd
+    return None, None
+
 
 def discover_services() -> dict[str, str]:
     """
@@ -170,6 +193,160 @@ def get_recent_logs(service: str, lines: int = 40) -> str:
         return r.stdout
     except Exception as e:
         return f"(could not read logs: {e})"
+
+# ── Nginx helpers ─────────────────────────────────────────
+
+NGINX_5XX_RE    = re.compile(r'" (5\d{2}) ')
+NGINX_ERROR_LINE_RE = re.compile(r'\[error\]|\[crit\]|\[alert\]|\[emerg\]', re.IGNORECASE)
+# Parse "METHOD /path HTTP/x" from access log line
+NGINX_REQUEST_RE = re.compile(r'"(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS) ([^ ]+) HTTP/')
+
+
+def get_nginx_error_context(lines: int = 20) -> str:
+    try:
+        r = subprocess.run(
+            ["tail", "-n", str(lines), NGINX_ERROR_LOG],
+            capture_output=True, text=True, timeout=5,
+        )
+        return r.stdout or "(пусто)"
+    except Exception as e:
+        return f"(не удалось прочитать nginx error log: {e})"
+
+
+async def handle_nginx_error(trigger_line: str, service: str | None, working_dir: str | None) -> None:
+    """Handle an nginx error: alert admin and optionally restart/fix the service."""
+    if service and service in fixing_now:
+        logger.info("Already fixing %s, skip nginx error", service)
+        return
+
+    key = hashlib.md5(f"nginx:{trigger_line[:200]}".encode()).hexdigest()
+    now = time.time()
+    if key in seen_errors and now - seen_errors[key] < COOLDOWN_SEC:
+        logger.info("Suppressed duplicate nginx error (cooldown)")
+        return
+    if key in known_transient:
+        logger.info("Suppressed known transient nginx error")
+        return
+    seen_errors[key] = now
+
+    excerpt = trigger_line.strip()[:400]
+    svc_label = f"<code>{service}</code>" if service else "сайт (путь вне известных сервисов)"
+
+    await tg(
+        f"🌐 <b>Ошибка nginx</b> → {svc_label}\n\n"
+        f"<code>{excerpt}</code>"
+    )
+
+    if not service or not working_dir:
+        known_transient.add(key)
+        return
+
+    fixing_now.add(service)
+    try:
+        svc_logs = get_recent_logs(service, lines=30)
+        nginx_ctx = get_nginx_error_context(20)
+        log_context = (
+            f"=== Nginx error log (последние строки) ===\n{nginx_ctx}\n\n"
+            f"=== Логи сервиса {service} ===\n{svc_logs}"
+        )
+
+        # Check if service is simply not running → restart it
+        r = subprocess.run(
+            ["systemctl", "is-active", service],
+            capture_output=True, text=True, timeout=5,
+        )
+        if r.stdout.strip() != "active":
+            restart_status = await restart_service(service)
+            await tg(
+                f"♻️ <b>{service}</b> не был активен — перезапустил.\n{restart_status}"
+            )
+            return
+
+        is_our_code = OUR_CODE_RE.search(svc_logs) is not None
+        has_traceback = "Traceback (most recent call last)" in svc_logs
+
+        if not (is_our_code or has_traceback):
+            await tg(
+                f"ℹ️ <b>{service}</b>: nginx вернул ошибку, но сервис активен и "
+                f"трейсбека нет. Скорее всего сетевая/временная проблема."
+            )
+            known_transient.add(key)
+            return
+
+        await tg(f"🔧 <b>Исправляю ошибку в <code>{service}</code>…</b>")
+        fix_result = await run_claude(service, log_context, working_dir)
+        restart_status = await restart_service(service)
+        await tg(
+            f"✅ <b>Готово — <code>{service}</code></b>\n\n"
+            f"{fix_result[:3500]}\n\n{restart_status}"
+        )
+
+    except Exception as e:
+        logger.exception("handle_nginx_error crashed for %s", service)
+        await tg(f"❌ <b>Monitor internal error (nginx/{service})</b>: {e}")
+    finally:
+        fixing_now.discard(service)
+
+
+# ── Nginx log watchers ─────────────────────────────────────
+
+async def watch_nginx_access_log() -> None:
+    logger.info("Watching nginx access log: %s", NGINX_ACCESS_LOG)
+    backoff = 5
+    while True:
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "tail", "-F", "-n", "0", NGINX_ACCESS_LOG,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            assert proc.stdout
+            backoff = 5
+            async for raw in proc.stdout:
+                line = raw.decode("utf-8", errors="replace").strip()
+                if not line:
+                    continue
+                m = NGINX_5XX_RE.search(line)
+                if not m:
+                    continue
+                pm = NGINX_REQUEST_RE.search(line)
+                path = pm.group(1) if pm else "/"
+                service, working_dir = _url_to_service(path)
+                logger.info("Nginx 5xx detected: %s → %s", path, service)
+                asyncio.create_task(handle_nginx_error(line, service, working_dir))
+        except Exception as e:
+            logger.error("watch_nginx_access_log crashed: %s — retrying in %ds", e, backoff)
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, 60)
+
+
+async def watch_nginx_error_log() -> None:
+    logger.info("Watching nginx error log: %s", NGINX_ERROR_LOG)
+    backoff = 5
+    while True:
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "tail", "-F", "-n", "0", NGINX_ERROR_LOG,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            assert proc.stdout
+            backoff = 5
+            async for raw in proc.stdout:
+                line = raw.decode("utf-8", errors="replace").strip()
+                if not line or not NGINX_ERROR_LINE_RE.search(line):
+                    continue
+                # Try to extract upstream path from error message
+                pm = re.search(r'while (?:reading|sending|connecting to) upstream.*?"([^"]+)"', line)
+                path = pm.group(1) if pm else ""
+                service, working_dir = _url_to_service(path)
+                logger.info("Nginx error log entry detected (service=%s): %s", service, line[:120])
+                asyncio.create_task(handle_nginx_error(line, service, working_dir))
+        except Exception as e:
+            logger.error("watch_nginx_error_log crashed: %s — retrying in %ds", e, backoff)
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, 60)
+
 
 # ── Claude fixer ─────────────────────────────────────────
 
@@ -340,7 +517,9 @@ async def watch_service(service: str, working_dir: str) -> None:
 # ── Entry point ───────────────────────────────────────────
 
 async def main() -> None:
+    global _discovered_services
     services = discover_services()
+    _discovered_services = services
 
     if not services:
         logger.error("No services discovered — check BOT_ROOT or systemd. Exiting.")
@@ -350,13 +529,16 @@ async def main() -> None:
 
     await tg(
         "🟢 <b>Error monitor запущен</b>\n"
-        "Мониторю: " + ", ".join(f"<code>{s}</code>" for s in services)
+        "Мониторю сервисы: " + ", ".join(f"<code>{s}</code>" for s in services) + "\n"
+        "Мониторю nginx: access + error log"
     )
 
     tasks = [
         asyncio.create_task(watch_service(svc, wd))
         for svc, wd in services.items()
     ]
+    tasks.append(asyncio.create_task(watch_nginx_access_log()))
+    tasks.append(asyncio.create_task(watch_nginx_error_log()))
     await asyncio.gather(*tasks)
 
 
