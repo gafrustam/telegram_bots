@@ -7,9 +7,11 @@ uses OpenAI to compose a friendly Russian alert,
 sends Telegram notification 1 hour before rain.
 """
 
+import html
 import json
 import logging
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -37,7 +39,7 @@ GOOGLE_AI_API_KEY = os.environ.get("GOOGLE_AI_API_KEY", "")
 BOT_TOKEN         = os.environ["RAIN_BOT_TOKEN"]
 
 _GOOGLE_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
-AI_MODEL = "gemini-2.0-flash" if GOOGLE_AI_API_KEY else "gpt-4o-mini"
+AI_MODEL = "gemini-2.5-flash" if GOOGLE_AI_API_KEY else "gpt-4o-mini"
 
 
 def _get_ai_client() -> OpenAI:
@@ -168,12 +170,26 @@ def compose_alert(slot: dict) -> str:
     return resp.choices[0].message.content.strip()
 
 
+def _strip_html(text: str) -> str:
+    """Remove HTML tags and unescape entities for plain-text fallback."""
+    return html.unescape(re.sub(r"<[^>]+>", "", text))
+
+
 def send_telegram(text: str) -> None:
     resp = httpx.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
         json={"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"},
         timeout=10,
     )
+    if resp.status_code == 400:
+        # HTML parse error — retry as plain text
+        logger.warning("Telegram rejected HTML, retrying as plain text")
+        plain = _strip_html(text)
+        resp = httpx.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+            json={"chat_id": CHAT_ID, "text": plain},
+            timeout=10,
+        )
     resp.raise_for_status()
 
 
