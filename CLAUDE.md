@@ -27,6 +27,7 @@
 - Сервисы: `/etc/systemd/system/<name>.service`
 - Error monitor: `error-monitor.service`
 - Admin: gafrustam (Telegram ID: 138468116)
+- **Ассистент** — это `coder_bot` (`/home/ubuntu/telegram_bots/coder_bot/bot.py`), бот который вызывает Claude Code
 
 ---
 

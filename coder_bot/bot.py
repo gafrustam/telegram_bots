@@ -64,6 +64,9 @@ dp.include_router(router)
 _busy = False
 _proc: asyncio.subprocess.Process | None = None
 _stop_requested = False
+_pending_task: asyncio.Task | None = None
+_pending_parts: list[str] = []
+MESSAGE_DEBOUNCE_SECS = 2.0
 
 STOP_KB = InlineKeyboardMarkup(
     inline_keyboard=[[InlineKeyboardButton(text="⏹ Остановить", callback_data="stop_task")]]
@@ -1197,19 +1200,17 @@ async def handle_photo(message: Message):
             updater_task.cancel()
 
 
-@router.message(F.text)
-async def handle_task(message: Message):
+async def _execute_task(chat_id: int, text: str):
     global _busy, _proc, _stop_requested
     if _busy:
-        await message.answer("⏳ Уже выполняю задачу. Дождись завершения.")
+        await bot.send_message(chat_id, "⏳ Уже выполняю задачу. Дождись завершения.")
         return
 
     _busy = True
     _stop_requested = False
-    text = message.text.strip()
     start_time = time.time()
 
-    status_msg = await message.answer("⏳ Запускаю Claude Code...", reply_markup=STOP_KB)
+    status_msg = await bot.send_message(chat_id, "⏳ Запускаю Claude Code...", reply_markup=STOP_KB)
     stop_event = asyncio.Event()
     updater_task = asyncio.create_task(
         _update_status(status_msg, start_time, stop_event)
@@ -1246,7 +1247,7 @@ async def handle_task(message: Message):
             except Exception:
                 pass
             if output.strip():
-                await _send_formatted(message.chat.id, output)
+                await _send_formatted(chat_id, output)
             return
 
         try:
@@ -1255,18 +1256,18 @@ async def handle_task(message: Message):
             pass
 
         if _is_rate_limited(output):
-            await message.answer("⚠️ Ассистент сообщает о rate limit. Попробуй позже.")
+            await bot.send_message(chat_id, "⚠️ Ассистент сообщает о rate limit. Попробуй позже.")
 
-        await _send_formatted(message.chat.id, output)
+        await _send_formatted(chat_id, output)
 
-        await _commit_and_push(message.chat.id)
+        await _commit_and_push(chat_id)
 
         changed_dirs = _get_changed_dirs(old_head)
         if changed_dirs:
-            await _restart_services(changed_dirs, message.chat.id)
+            await _restart_services(changed_dirs, chat_id)
 
         try:
-            await message.answer(f"\n{random.choice(CREATION_QUOTES)}")
+            await bot.send_message(chat_id, f"\n{random.choice(CREATION_QUOTES)}")
         except Exception:
             pass
 
@@ -1274,7 +1275,7 @@ async def handle_task(message: Message):
         stop_event.set()
         log.exception("Error running assistant")
         try:
-            await message.answer(f"❌ Ошибка: {e}")
+            await bot.send_message(chat_id, f"❌ Ошибка: {e}")
         except Exception:
             pass
     finally:
@@ -1283,6 +1284,30 @@ async def handle_task(message: Message):
         if not updater_task.done():
             stop_event.set()
             updater_task.cancel()
+
+
+@router.message(F.text)
+async def handle_task(message: Message):
+    global _pending_task, _pending_parts
+
+    if _busy:
+        await message.answer("⏳ Уже выполняю задачу. Дождись завершения.")
+        return
+
+    _pending_parts.append(message.text.strip())
+
+    if _pending_task and not _pending_task.done():
+        _pending_task.cancel()
+
+    chat_id = message.chat.id
+
+    async def _debounced():
+        await asyncio.sleep(MESSAGE_DEBOUNCE_SECS)
+        parts = list(_pending_parts)
+        _pending_parts.clear()
+        await _execute_task(chat_id, "\n".join(parts))
+
+    _pending_task = asyncio.create_task(_debounced())
 
 
 async def main():
