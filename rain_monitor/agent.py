@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
 Rain Monitor Agent — Koh Samui
-Runs every 30 minutes via systemd timer.
-Fetches weather from open-meteo.com (free, no key),
-uses OpenAI to compose a friendly Russian alert,
-sends Telegram notification 1 hour before rain.
+Runs every 5 minutes via systemd timer.
+Fetches hourly weather from open-meteo.com (free, no key),
+checks all upcoming slots (up to 2h ahead) for rain >= 60% probability,
+uses AI to compose a friendly Russian alert with exact start time,
+sends Telegram notification. Suppressed if currently raining or alerted within 2h.
 """
 
 import html
@@ -50,7 +51,7 @@ CHAT_ID        = os.environ["RAIN_CHAT_ID"]
 STATE_FILE     = Path(__file__).parent / "rain_state.json"
 
 # Koh Samui, Thailand (UTC+7)
-LAT, LON              = 9.5287, 100.0628
+LAT, LON              = 9.5483459, 100.0277257
 BANGKOK_TZ_OFFSET     = timedelta(hours=7)
 MIN_ALERT_INTERVAL_H  = 2.0   # don't alert more often than this
 RAIN_PROB_THRESHOLD   = 60    # % precipitation probability
@@ -88,7 +89,7 @@ def fetch_forecast() -> list[dict]:
         delta_h = (t - now_bkk.replace(tzinfo=None)).total_seconds() / 3600
         if delta_h < -0.5:
             continue
-        if delta_h > 4:
+        if delta_h > 2:
             break
         result.append({
             "time":       t_str,
@@ -152,13 +153,15 @@ def compose_alert(slot: dict) -> str:
 
     weather_type = wcode_to_ru(slot["wcode"])
     is_storm     = slot["wcode"] >= 95
+    minutes_away = max(1, int(slot["in_hours"] * 60))
+    start_time   = datetime.fromisoformat(slot["time"]).strftime("%H:%M")
 
     prompt = (
         f"Напиши короткое предупреждение о дожде на Ко Самуи (Таиланд). "
-        f"Параметры: тип осадков={weather_type}, через={slot['in_hours']} ч, "
+        f"Параметры: тип осадков={weather_type}, начало в {start_time} (через {minutes_away} мин), "
         f"вероятность={slot['prob_%']}%, интенсивность={slot['mm']} мм, температура={slot['temp_c']}°C. "
         f"Требования: 1-3 строки, русский язык, HTML-разметка (<b>), эмодзи {'⛈' if is_storm else '☔'}, "
-        f"укажи через сколько минут ожидать. Без лишних слов."
+        f"обязательно укажи конкретное время начала ({start_time}). Без лишних слов."
     )
 
     resp = client.chat.completions.create(
@@ -213,14 +216,21 @@ def main() -> None:
         logger.info("  +%4.1fh  prob=%3d%%  mm=%.1f  wcode=%d",
                     s["in_hours"], s["prob_%"], s["mm"], s["wcode"])
 
-    # Find the nearest slot within 1 hour with rain likely
+    # Check if it's currently raining (nearest slot with in_hours <= 0.5)
+    current_slot = next((s for s in forecast if s["in_hours"] <= 0.5), None)
+    if current_slot and (current_slot["wcode"] >= 51 or current_slot["mm"] > 0.1):
+        logger.info("Currently raining (wcode=%d, mm=%.1f). No alert.",
+                    current_slot["wcode"], current_slot["mm"])
+        return
+
+    # Find the earliest upcoming slot (in_hours > 0.25) with rain >= threshold
     rain_slot = next(
-        (s for s in forecast if s["in_hours"] <= 1.0 and s["prob_%"] >= RAIN_PROB_THRESHOLD),
+        (s for s in forecast if s["in_hours"] > 0.25 and s["prob_%"] >= RAIN_PROB_THRESHOLD),
         None,
     )
 
     if rain_slot is None:
-        logger.info("No rain expected within 1 hour. Nothing to do.")
+        logger.info("No rain expected in upcoming slots. Nothing to do.")
         return
 
     logger.info("Rain detected: %s", rain_slot)
