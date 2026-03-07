@@ -113,7 +113,7 @@ async def api_generate(req: GenerateRequest):
         original_audio=audio,
     )
     logger.info("Generated session=%s text_len=%d audio_bytes=%d", req.session_id, len(text), len(audio))
-    return {"text": text, "audio_url": f"/api/audio/{req.session_id}"}
+    return {"text": text, "audio_url": f"api/audio/{req.session_id}"}
 
 
 @app.get("/api/audio/{session_id}")

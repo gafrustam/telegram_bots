@@ -104,7 +104,7 @@ const app = {
     showSection('sec-loading');
 
     try {
-      const res = await fetch('/api/generate', {
+      const res = await fetch('api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -190,7 +190,7 @@ const app = {
       form.append('session_id', state.sessionId);
       form.append('audio', state.recordingBlob, 'recording.webm');
 
-      const res = await fetch('/api/assess', { method: 'POST', body: form });
+      const res = await fetch('api/assess', { method: 'POST', body: form });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || `Server error ${res.status}`);
