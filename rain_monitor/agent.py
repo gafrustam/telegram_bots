@@ -13,12 +13,14 @@ import json
 import logging
 import os
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import httpx
 from openai import OpenAI
+from timezonefinder import TimezoneFinder
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 _log_dir = Path(__file__).parent / "logs"
@@ -50,10 +52,11 @@ def _get_ai_client() -> OpenAI:
 CHAT_ID        = os.environ["RAIN_CHAT_ID"]
 STATE_FILE     = Path(__file__).parent / "rain_state.json"
 
-# Koh Samui, Thailand (UTC+7)
-LAT, LON              = 9.5483459, 100.0277257
-BANGKOK_TZ_OFFSET     = timedelta(hours=7)
-MIN_ALERT_INTERVAL_H  = 2.0   # don't alert more often than this
+# Koh Samui, Thailand
+LAT, LON             = 9.5483459, 100.0277257
+_tz_name             = TimezoneFinder().timezone_at(lat=LAT, lng=LON) or "UTC"
+LOCAL_TZ             = ZoneInfo(_tz_name)
+MIN_ALERT_INTERVAL_H = 2.0   # don't alert more often than this
 RAIN_PROB_THRESHOLD   = 60    # % precipitation probability
 
 
@@ -73,20 +76,20 @@ def fetch_forecast() -> list[dict]:
                 "temperature_2m",
             ],
             "forecast_days": 1,
-            "timezone": "Asia/Bangkok",
+            "timezone": _tz_name,
         },
         timeout=15,
     )
     resp.raise_for_status()
     raw = resp.json()
 
-    now_bkk = datetime.now(timezone.utc) + BANGKOK_TZ_OFFSET
-    hourly  = raw["hourly"]
-    result  = []
+    now_local = datetime.now(LOCAL_TZ).replace(tzinfo=None)
+    hourly    = raw["hourly"]
+    result    = []
 
     for i, t_str in enumerate(hourly["time"]):
         t       = datetime.fromisoformat(t_str)
-        delta_h = (t - now_bkk.replace(tzinfo=None)).total_seconds() / 3600
+        delta_h = (t - now_local).total_seconds() / 3600
         if delta_h < -0.5:
             continue
         if delta_h > 2:
