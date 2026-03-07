@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Shadowing Practice</title>
+  <link rel="stylesheet" href="css/main.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-inner">
+        <span class="header-icon">🎙</span>
+        <div>
+          <h1 class="header-title">Shadowing Practice</h1>
+          <p class="header-sub">Listen · Repeat · Improve</p>
+        </div>
+      </div>
+    </header>
+
+    <!-- Config Section -->
+    <section id="sec-config" class="section active">
+      <div class="card">
+        <label class="field-label">CEFR Level</label>
+        <div class="pill-group" id="level-group">
+          <button class="pill" data-value="A1">A1</button>
+          <button class="pill" data-value="A2">A2</button>
+          <button class="pill" data-value="B1">B1</button>
+          <button class="pill" data-value="B2">B2</button>
+          <button class="pill active" data-value="C1">C1</button>
+          <button class="pill" data-value="C2">C2</button>
+        </div>
+        <div class="level-desc" id="level-desc"></div>
+      </div>
+
+      <div class="card">
+        <label class="field-label">Passage Duration</label>
+        <div class="pill-group" id="duration-group">
+          <button class="pill" data-value="30">30 sec</button>
+          <button class="pill active" data-value="60">1 min</button>
+          <button class="pill" data-value="90">1.5 min</button>
+          <button class="pill" data-value="120">2 min</button>
+        </div>
+      </div>
+
+      <button id="btn-generate" class="btn-primary" onclick="app.generate()">
+        <span class="btn-icon">✨</span> Generate Passage
+      </button>
+    </section>
+
+    <!-- Loading Section -->
+    <section id="sec-loading" class="section">
+      <div class="loading-card">
+        <div class="spinner"></div>
+        <p class="loading-text" id="loading-text">Generating passage…</p>
+      </div>
+    </section>
+
+    <!-- Practice Section -->
+    <section id="sec-practice" class="section">
+      <!-- Passage -->
+      <div class="card passage-card">
+        <div class="passage-header">
+          <span class="passage-badge" id="passage-badge">C1</span>
+          <button class="btn-ghost" id="btn-toggle-text" onclick="app.toggleText()">Hide Text</button>
+        </div>
+        <p class="passage-text" id="passage-text"></p>
+      </div>
+
+      <!-- Original Audio Player -->
+      <div class="card audio-card">
+        <div class="audio-label">
+          <span class="audio-icon">🔊</span>
+          <span>Original Recording</span>
+          <span class="listen-badge" id="listen-badge">0×</span>
+        </div>
+        <div class="player" id="player-original">
+          <button class="player-btn" id="orig-play-btn" onclick="app.toggleOriginal()">
+            <svg class="icon-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          </button>
+          <div class="player-track">
+            <div class="player-bar" id="orig-bar">
+              <div class="player-fill" id="orig-fill"></div>
+            </div>
+            <div class="player-times">
+              <span id="orig-cur">0:00</span>
+              <span id="orig-dur">0:00</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Divider -->
+      <div class="divider">
+        <span>Your Turn</span>
+      </div>
+
+      <!-- Recording Section -->
+      <div class="card record-card">
+        <div class="record-hint" id="record-hint">
+          Press the button and repeat the passage out loud
+        </div>
+
+        <!-- Waveform canvas -->
+        <canvas id="waveform" class="waveform hidden"></canvas>
+
+        <!-- Record button -->
+        <div class="record-center">
+          <button class="record-btn" id="record-btn" onclick="app.toggleRecord()">
+            <div class="record-ring"></div>
+            <div class="record-inner">
+              <span class="record-icon" id="record-icon">●</span>
+            </div>
+          </button>
+          <div class="record-timer" id="record-timer"></div>
+        </div>
+
+        <!-- User playback -->
+        <div id="user-playback" class="hidden">
+          <div class="audio-label">
+            <span class="audio-icon">🎤</span>
+            <span>Your Recording</span>
+            <button class="btn-ghost btn-sm" onclick="app.reRecord()">Re-record</button>
+          </div>
+          <div class="player" id="player-user">
+            <button class="player-btn" id="user-play-btn" onclick="app.toggleUser()">
+              <svg class="icon-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            </button>
+            <div class="player-track">
+              <div class="player-bar" id="user-bar">
+                <div class="player-fill" id="user-fill"></div>
+              </div>
+              <div class="player-times">
+                <span id="user-cur">0:00</span>
+                <span id="user-dur">0:00</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Submit -->
+      <button id="btn-submit" class="btn-primary hidden" onclick="app.submit()">
+        <span class="btn-icon">📊</span> Submit for Assessment
+      </button>
+
+      <button class="btn-ghost btn-back" onclick="app.reset()">← New Passage</button>
+    </section>
+
+    <!-- Results Section -->
+    <section id="sec-results" class="section">
+      <!-- Overall score -->
+      <div class="card results-hero">
+        <div class="overall-gauge" id="overall-gauge">
+          <svg viewBox="0 0 120 120" class="gauge-svg">
+            <circle cx="60" cy="60" r="52" fill="none" stroke="var(--border)" stroke-width="10"/>
+            <circle cx="60" cy="60" r="52" fill="none" stroke="var(--accent)" stroke-width="10"
+                    stroke-dasharray="0 327" stroke-linecap="round"
+                    transform="rotate(-90 60 60)" id="overall-arc" class="gauge-arc"/>
+          </svg>
+          <div class="gauge-label">
+            <span class="gauge-score" id="overall-score">—</span>
+            <span class="gauge-max">/10</span>
+          </div>
+        </div>
+        <div class="overall-verdict" id="overall-verdict">—</div>
+        <div class="coverage-row">
+          <span class="coverage-label">Text Coverage</span>
+          <div class="coverage-bar-wrap">
+            <div class="coverage-bar-fill" id="coverage-fill"></div>
+          </div>
+          <span class="coverage-pct" id="coverage-pct">—%</span>
+        </div>
+      </div>
+
+      <!-- Criteria grid -->
+      <div class="criteria-grid">
+        <div class="criterion-card" id="crit-pronunciation">
+          <div class="crit-gauge">
+            <svg viewBox="0 0 80 80" class="gauge-sm-svg">
+              <circle cx="40" cy="40" r="32" fill="none" stroke="var(--border)" stroke-width="7"/>
+              <circle cx="40" cy="40" r="32" fill="none" stroke="var(--accent)" stroke-width="7"
+                      stroke-dasharray="0 201" stroke-linecap="round"
+                      transform="rotate(-90 40 40)" class="gauge-arc crit-arc" data-crit="pronunciation"/>
+            </svg>
+            <div class="crit-score" id="score-pronunciation">—</div>
+          </div>
+          <div class="crit-name">Pronunciation</div>
+        </div>
+        <div class="criterion-card" id="crit-rhythm">
+          <div class="crit-gauge">
+            <svg viewBox="0 0 80 80" class="gauge-sm-svg">
+              <circle cx="40" cy="40" r="32" fill="none" stroke="var(--border)" stroke-width="7"/>
+              <circle cx="40" cy="40" r="32" fill="none" stroke="var(--accent)" stroke-width="7"
+                      stroke-dasharray="0 201" stroke-linecap="round"
+                      transform="rotate(-90 40 40)" class="gauge-arc crit-arc" data-crit="rhythm"/>
+            </svg>
+            <div class="crit-score" id="score-rhythm">—</div>
+          </div>
+          <div class="crit-name">Rhythm</div>
+        </div>
+        <div class="criterion-card" id="crit-intonation">
+          <div class="crit-gauge">
+            <svg viewBox="0 0 80 80" class="gauge-sm-svg">
+              <circle cx="40" cy="40" r="32" fill="none" stroke="var(--border)" stroke-width="7"/>
+              <circle cx="40" cy="40" r="32" fill="none" stroke="var(--accent)" stroke-width="7"
+                      stroke-dasharray="0 201" stroke-linecap="round"
+                      transform="rotate(-90 40 40)" class="gauge-arc crit-arc" data-crit="intonation"/>
+            </svg>
+            <div class="crit-score" id="score-intonation">—</div>
+          </div>
+          <div class="crit-name">Intonation</div>
+        </div>
+        <div class="criterion-card" id="crit-fluency">
+          <div class="crit-gauge">
+            <svg viewBox="0 0 80 80" class="gauge-sm-svg">
+              <circle cx="40" cy="40" r="32" fill="none" stroke="var(--border)" stroke-width="7"/>
+              <circle cx="40" cy="40" r="32" fill="none" stroke="var(--accent)" stroke-width="7"
+                      stroke-dasharray="0 201" stroke-linecap="round"
+                      transform="rotate(-90 40 40)" class="gauge-arc crit-arc" data-crit="fluency"/>
+            </svg>
+            <div class="crit-score" id="score-fluency">—</div>
+          </div>
+          <div class="crit-name">Fluency</div>
+        </div>
+      </div>
+
+      <!-- Strengths -->
+      <div class="card feedback-card">
+        <div class="feedback-title">
+          <span>✅</span> Strengths
+        </div>
+        <ul class="feedback-list" id="strengths-list"></ul>
+      </div>
+
+      <!-- Improvements -->
+      <div class="card feedback-card">
+        <div class="feedback-title">
+          <span>🎯</span> Areas to Improve
+        </div>
+        <ul class="feedback-list" id="improvements-list"></ul>
+      </div>
+
+      <!-- Comment -->
+      <div class="card comment-card">
+        <p class="comment-text" id="comment-text"></p>
+      </div>
+
+      <!-- Actions -->
+      <div class="results-actions">
+        <button class="btn-primary" onclick="app.tryAgain()">
+          <span class="btn-icon">🔄</span> Try Again
+        </button>
+        <button class="btn-secondary" onclick="app.reset()">
+          New Passage
+        </button>
+      </div>
+    </section>
+  </div>
+
+  <script src="/assets/nav.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
