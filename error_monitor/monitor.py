@@ -113,7 +113,7 @@ def discover_services() -> dict[str, str]:
         return {}
 
 # Cooldown: same error won't trigger again for this many seconds
-COOLDOWN_SEC = 300
+COOLDOWN_SEC = 7200  # 2 hours
 
 # Max time given to Claude to fix (seconds)
 CLAUDE_TIMEOUT = 360
@@ -145,6 +145,32 @@ IGNORE_RE = re.compile(
 # If ANY of these strings appear in the log context, we consider it "our code's fault"
 # and worth trying to auto-fix
 OUR_CODE_RE = re.compile(r'File "/home/ubuntu/telegram_bots/')
+
+# ── Error normalization ──────────────────────────────────
+
+def _normalize_line(service: str, line: str) -> str:
+    """
+    Strip volatile parts from a log line so the same error always produces
+    the same hash, regardless of timestamp, hostname, or PID.
+
+    Example input:
+      Mar 07 14:49:45 ip-172-26-8-21 python[17641]: raise TelegramUnauthorizedError(...)
+    Output:
+      ielts2-bot:raise TelegramUnauthorizedError(...)
+    """
+    s = line
+    # Remove journalctl short prefix: "Mar 07 14:49:45 hostname "
+    s = re.sub(r'^[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\S+\s+', '', s)
+    # Remove process[PID]: prefix, e.g. "python[17641]:" or "uvicorn[42]:"
+    s = re.sub(r'\w+\[\d+\]:\s*', '', s)
+    # Remove ISO timestamps: 2026-03-07T14:49:45 or 2026-03-07 14:49:45.123
+    s = re.sub(r'\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}[.,\d]*', '', s)
+    # Remove memory addresses
+    s = re.sub(r'0x[0-9a-fA-F]{4,}', '0xADDR', s)
+    # Collapse whitespace
+    s = ' '.join(s.split())
+    return f"{service}:{s[:200]}"
+
 
 # ── State ────────────────────────────────────────────────
 
@@ -219,7 +245,7 @@ async def handle_nginx_error(trigger_line: str, service: str | None, working_dir
         logger.info("Already fixing %s, skip nginx error", service)
         return
 
-    key = hashlib.md5(f"nginx:{trigger_line[:200]}".encode()).hexdigest()
+    key = hashlib.md5(_normalize_line(f"nginx:{service or 'unknown'}", trigger_line).encode()).hexdigest()
     now = time.time()
     if key in seen_errors and now - seen_errors[key] < COOLDOWN_SEC:
         logger.info("Suppressed duplicate nginx error (cooldown)")
@@ -228,14 +254,6 @@ async def handle_nginx_error(trigger_line: str, service: str | None, working_dir
         logger.info("Suppressed known transient nginx error")
         return
     seen_errors[key] = now
-
-    excerpt = trigger_line.strip()[:400]
-    svc_label = f"<code>{service}</code>" if service else "сайт (путь вне известных сервисов)"
-
-    await tg(
-        f"🌐 <b>Ошибка nginx</b> → {svc_label}\n\n"
-        f"<code>{excerpt}</code>"
-    )
 
     if not service or not working_dir:
         known_transient.add(key)
@@ -266,14 +284,9 @@ async def handle_nginx_error(trigger_line: str, service: str | None, working_dir
         has_traceback = "Traceback (most recent call last)" in svc_logs
 
         if not (is_our_code or has_traceback):
-            await tg(
-                f"ℹ️ <b>{service}</b>: nginx вернул ошибку, но сервис активен и "
-                f"трейсбека нет. Скорее всего сетевая/временная проблема."
-            )
             known_transient.add(key)
             return
 
-        await tg(f"🔧 <b>Исправляю ошибку в <code>{service}</code>…</b>")
         fix_result = await run_claude(service, log_context, working_dir)
         restart_status = await restart_service(service)
         await tg(
@@ -423,8 +436,8 @@ async def handle_error(service: str, trigger_line: str, working_dir: str) -> Non
         logger.info("Already fixing %s, skip duplicate error", service)
         return
 
-    # Deduplicate by hash (first 200 chars of trigger)
-    key = hashlib.md5(f"{service}:{trigger_line[:200]}".encode()).hexdigest()
+    # Deduplicate by normalized hash (strips timestamps/PIDs so restarts don't bypass cooldown)
+    key = hashlib.md5(_normalize_line(service, trigger_line).encode()).hexdigest()
     now = time.time()
     if key in seen_errors and now - seen_errors[key] < COOLDOWN_SEC:
         logger.info("Suppressed duplicate error in %s (cooldown)", service)
@@ -438,34 +451,22 @@ async def handle_error(service: str, trigger_line: str, working_dir: str) -> Non
     fixing_now.add(service)
     try:
         log_context = get_recent_logs(service, lines=40)
-        excerpt = trigger_line.strip()[:400]
 
-        # ── Step 1: alert ──────────────────────────────────
-        await tg(
-            f"🚨 <b>Ошибка в <code>{service}</code></b>\n\n"
-            f"<code>{excerpt}</code>"
-        )
-
-        # ── Step 2: decide if code fix is possible ─────────
+        # ── Step 1: decide if code fix is possible ─────────
         is_our_code = OUR_CODE_RE.search(log_context) is not None
         has_traceback = "Traceback (most recent call last)" in log_context
 
         if not (is_our_code or has_traceback):
-            await tg(
-                f"ℹ️ <b>{service}</b>: ошибка не в коде "
-                f"(сеть / внешний сервис). Ручное вмешательство не требуется."
-            )
             known_transient.add(key)
             return
 
-        # ── Step 3: fix ────────────────────────────────────
-        await tg(f"🔧 <b>Исправляю ошибку в <code>{service}</code>…</b>")
+        # ── Step 2: fix ────────────────────────────────────
         fix_result = await run_claude(service, log_context, working_dir)
 
-        # ── Step 4: restart service after fix ──────────────
+        # ── Step 3: restart service after fix ──────────────
         restart_status = await restart_service(service)
 
-        # ── Step 5: report ─────────────────────────────────
+        # ── Step 4: report ─────────────────────────────────
         summary = fix_result[:3500]
         await tg(
             f"✅ <b>Готово — <code>{service}</code></b>\n\n"
