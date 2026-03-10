@@ -8,11 +8,9 @@ uses AI to compose a friendly Russian alert with exact start time,
 sends Telegram notification. Suppressed if currently raining or alerted within 2h.
 """
 
-import html
 import json
 import logging
 import os
-import re
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -163,39 +161,27 @@ def compose_alert(slot: dict) -> str:
         f"Напиши короткое предупреждение о дожде на Ко Самуи (Таиланд). "
         f"Параметры: тип осадков={weather_type}, начало в {start_time} (через {minutes_away} мин), "
         f"вероятность={slot['prob_%']}%, интенсивность={slot['mm']} мм, температура={slot['temp_c']}°C. "
-        f"Требования: 1-3 строки, русский язык, HTML-разметка (<b>), эмодзи {'⛈' if is_storm else '☔'}, "
+        f"Требования: 1-3 строки, русский язык, только текст и эмодзи (без HTML-тегов), "
+        f"эмодзи {'⛈' if is_storm else '☔'}, "
         f"обязательно укажи конкретное время начала ({start_time}). Без лишних слов."
     )
 
     resp = client.chat.completions.create(
         model=AI_MODEL,
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=120,
+        max_tokens=200,
         temperature=0.7,
     )
     return resp.choices[0].message.content.strip()
 
 
-def _strip_html(text: str) -> str:
-    """Remove HTML tags and unescape entities for plain-text fallback."""
-    return html.unescape(re.sub(r"<[^>]+>", "", text))
-
 
 def send_telegram(text: str) -> None:
     resp = httpx.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-        json={"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"},
+        json={"chat_id": CHAT_ID, "text": text},
         timeout=10,
     )
-    if resp.status_code == 400:
-        # HTML parse error — retry as plain text
-        logger.warning("Telegram rejected HTML, retrying as plain text")
-        plain = _strip_html(text)
-        resp = httpx.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-            json={"chat_id": CHAT_ID, "text": plain},
-            timeout=10,
-        )
     resp.raise_for_status()
 
 
