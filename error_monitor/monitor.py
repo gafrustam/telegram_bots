@@ -28,8 +28,8 @@ ADMIN_CHAT_ID  = 138468116
 
 CLAUDE_PATH = "/home/ubuntu/.local/bin/claude"
 
-# Root directory — any service whose WorkingDirectory is under here gets monitored
-BOT_ROOT = "/home/ubuntu/telegram_bots"
+# Root directories — any service whose WorkingDirectory is under any of these gets monitored
+BOT_ROOTS = ["/home/ubuntu/telegram_bots", "/home/ubuntu/projects"]
 
 # Services to always exclude from monitoring (e.g. the monitor itself)
 EXCLUDED_SERVICES: set[str] = {"error-monitor"}
@@ -40,9 +40,10 @@ NGINX_ERROR_LOG  = "/var/log/nginx/ru.error.log"
 
 # URL path prefix → systemd service name (for error attribution)
 URL_TO_SERVICE: dict[str, str] = {
-    "/monopoly": "monopoly-server",
-    "/ielts":    "ielts-server",
-    "/poker":    "poker-server",
+    "/monopoly":      "monopoly-server",
+    "/ielts":         "ielts-server",
+    "/poker":         "poker-server",
+    "/shadowing-pro": "shadowing-pro",
 }
 
 # Populated by discover_services() in main(); shared with nginx watchers
@@ -90,8 +91,9 @@ def discover_services() -> dict[str, str]:
         current_wd = ""
 
         def _flush():
-            if current_id and current_wd.startswith(BOT_ROOT) and current_id not in EXCLUDED_SERVICES:
-                services[current_id] = current_wd
+            if current_id and current_id not in EXCLUDED_SERVICES:
+                if any(current_wd.startswith(root) for root in BOT_ROOTS):
+                    services[current_id] = current_wd
 
         for line in r2.stdout.splitlines():
             if not line.strip():
@@ -134,6 +136,8 @@ IGNORE_RE = re.compile(
     r"(Connection (refused|reset|closed|timed out)|TimeoutError|ConnectionError|"
     r"aiohttp.*ClientConnector|NetworkError|RetryAfter|"
     r"Failed to fetch update|TelegramNetworkError|"
+    r"httpx\.(ReadError|ConnectError|RemoteProtocolError|WriteError)|"
+    r"ReadError|RemoteProtocolError|"
     r"Polling (stopped|started)|Run polling|"
     r"INFO.*aiogram|DEBUG.*|"
     r"WARN.*retry|WARN.*reconnect|"
@@ -142,9 +146,18 @@ IGNORE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Patterns in Claude's response indicating it found no code to fix (transient issue)
+TRANSIENT_RESPONSE_RE = re.compile(
+    r"(transient (issue|error|network)|no (change|fix|modification|action)|"
+    r"no changes (made|needed|were made|required)|cannot be fixed by changing code|"
+    r"outside.*control|external (api|service) (outage|issue|unavailability)|"
+    r"network (blip|interruption|instability)|not a code (bug|issue|problem))",
+    re.IGNORECASE,
+)
+
 # If ANY of these strings appear in the log context, we consider it "our code's fault"
 # and worth trying to auto-fix
-OUR_CODE_RE = re.compile(r'File "/home/ubuntu/telegram_bots/')
+OUR_CODE_RE = re.compile(r'File "/home/ubuntu/(telegram_bots|projects)/')
 
 # ── Error normalization ──────────────────────────────────
 
@@ -463,10 +476,16 @@ async def handle_error(service: str, trigger_line: str, working_dir: str) -> Non
         # ── Step 2: fix ────────────────────────────────────
         fix_result = await run_claude(service, log_context, working_dir)
 
-        # ── Step 3: restart service after fix ──────────────
+        # ── Step 3: if Claude says it's transient — stay silent ──
+        if TRANSIENT_RESPONSE_RE.search(fix_result):
+            known_transient.add(key)
+            logger.info("Claude confirmed transient error in %s — suppressing alert", service)
+            return
+
+        # ── Step 4: restart service after fix ──────────────
         restart_status = await restart_service(service)
 
-        # ── Step 4: report ─────────────────────────────────
+        # ── Step 5: report ─────────────────────────────────
         summary = fix_result[:3500]
         await tg(
             f"✅ <b>Готово — <code>{service}</code></b>\n\n"
