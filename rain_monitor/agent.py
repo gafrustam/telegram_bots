@@ -40,7 +40,7 @@ GOOGLE_AI_API_KEY = os.environ.get("GOOGLE_AI_API_KEY", "")
 BOT_TOKEN         = os.environ["RAIN_BOT_TOKEN"]
 
 _GOOGLE_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
-AI_MODEL = "gemini-2.0-flash" if GOOGLE_AI_API_KEY else "gpt-4o-mini"
+AI_MODEL = "gemini-2.5-pro" if GOOGLE_AI_API_KEY else "gpt-4o-mini"
 
 
 def _get_ai_client() -> OpenAI:
