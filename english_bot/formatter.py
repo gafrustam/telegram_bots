@@ -115,7 +115,7 @@ def format_level_change(old_level: int, new_level: int, label: str, cefr: str) -
 
     return (
         f"{emoji} Уровень {action}!\n\n"
-        f"<b>Level {new_level} — {_esc(label)} ({cefr})</b>"
+        f"<b>Level {new_level} — {_esc(label)}</b>"
     )
 
 

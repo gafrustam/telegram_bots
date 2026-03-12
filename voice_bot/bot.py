@@ -107,6 +107,14 @@ async def handle_media(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         logger.warning("%sempty transcription result", uid_tag)
 
 
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    from telegram.error import NetworkError, TimedOut
+    if isinstance(context.error, (NetworkError, TimedOut)):
+        logger.warning("Transient network error (will retry): %s", context.error)
+    else:
+        logger.exception("Unhandled exception in update handler", exc_info=context.error)
+
+
 async def post_init(application: Application) -> None:
     await database.init_db()
     logger.info("Voice messages bot started")
@@ -126,6 +134,7 @@ def main() -> None:
     )
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO | filters.VIDEO_NOTE, handle_media))
+    app.add_error_handler(error_handler)
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 

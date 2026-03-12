@@ -186,7 +186,7 @@ async def handle_level_down(message: Message, state: FSMContext) -> None:
 
 async def _change_level(message: Message, delta: int) -> None:
     old_level = await database.get_user_level(message.from_user.id)
-    new_level = max(1, min(25, old_level + delta))
+    new_level = max(1, min(13, old_level + delta))
 
     if new_level == old_level:
         direction = "максимальный" if delta > 0 else "минимальный"
@@ -251,7 +251,7 @@ async def _generate_and_show_scenario(message: Message, state: FSMContext) -> No
     )
 
     text = format_scenario(topic, scenario_text, vocabulary, constructions)
-    text += f"\n\n🎓 <b>Level {level.level} — {level.label} ({level.cefr})</b>"
+    text += f"\n\n🎓 <b>Level {level.level} — {level.label}</b>"
     text += f"\n💬 Обменов: {level.exchanges}"
 
     await message.answer(
@@ -299,7 +299,7 @@ async def handle_another_topic(callback: CallbackQuery, state: FSMContext) -> No
     )
 
     text = format_scenario(topic, scenario_text, vocabulary, constructions)
-    text += f"\n\n🎓 <b>Level {level.level} — {level.label} ({level.cefr})</b>"
+    text += f"\n\n🎓 <b>Level {level.level} — {level.label}</b>"
     text += f"\n💬 Обменов: {level.exchanges}"
 
     await callback.message.edit_text(
@@ -652,7 +652,7 @@ async def handle_result_new(callback: CallbackQuery, state: FSMContext) -> None:
     )
 
     text = format_scenario(topic, scenario_text, vocabulary, constructions)
-    text += f"\n\n🎓 <b>Level {level.level} — {level.label} ({level.cefr})</b>"
+    text += f"\n\n🎓 <b>Level {level.level} — {level.label}</b>"
     text += f"\n💬 Обменов: {level.exchanges}"
 
     await callback.message.answer(
