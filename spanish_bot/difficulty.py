@@ -17,15 +17,15 @@ class DifficultyLevel:
 LEVELS: dict[int, DifficultyLevel] = {
     # ── Absolute Beginner (A0–A1) ──────────────────────
     1: DifficultyLevel(level=1, label="Principiante 1", cefr="A0",
-        vocab_count=5, construction_count=2, max_sentence_words=4, exchanges=2),
+        vocab_count=5, construction_count=2, max_sentence_words=4, exchanges=4),
     2: DifficultyLevel(level=2, label="Principiante 2", cefr="A0",
-        vocab_count=5, construction_count=2, max_sentence_words=5, exchanges=2),
+        vocab_count=5, construction_count=2, max_sentence_words=5, exchanges=4),
     3: DifficultyLevel(level=3, label="Principiante 3", cefr="A1",
-        vocab_count=5, construction_count=2, max_sentence_words=6, exchanges=3),
+        vocab_count=5, construction_count=2, max_sentence_words=6, exchanges=4),
     4: DifficultyLevel(level=4, label="Principiante 4", cefr="A1",
-        vocab_count=6, construction_count=2, max_sentence_words=7, exchanges=3),
+        vocab_count=6, construction_count=2, max_sentence_words=7, exchanges=4),
     5: DifficultyLevel(level=5, label="Principiante 5", cefr="A1",
-        vocab_count=6, construction_count=3, max_sentence_words=7, exchanges=3),
+        vocab_count=6, construction_count=3, max_sentence_words=7, exchanges=4),
 
     # ── Elementary (A2) ────────────────────────────────
     6: DifficultyLevel(level=6, label="Elemental 1", cefr="A2",

@@ -172,7 +172,13 @@ def compose_alert(slot: dict) -> str:
         max_tokens=200,
         temperature=0.7,
     )
-    return resp.choices[0].message.content.strip()
+    content = resp.choices[0].message.content
+    if not content:
+        finish_reason = resp.choices[0].finish_reason
+        logger.warning("AI returned empty content (finish_reason=%s), using fallback", finish_reason)
+        slot_time = slot.get("time", "")[-5:]
+        return f"{'⛈' if is_storm else '☔'} Ожидаются осадки в {slot_time} (через {minutes_away} мин). Вероятность {slot['prob_%']}%, {slot['mm']} мм."
+    return content.strip()
 
 
 
