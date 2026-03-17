@@ -4,6 +4,7 @@ import os
 from logging.handlers import RotatingFileHandler
 import re
 import tempfile
+import time
 from datetime import datetime, timedelta, timezone
 
 from dotenv import load_dotenv
@@ -418,6 +419,7 @@ async def handle_accept_topic(callback: CallbackQuery, state: FSMContext) -> Non
 
     data = await state.get_data()
     part = data["part"]
+    _t0 = time.perf_counter()
 
     await callback.answer()
     await callback.message.edit_reply_markup(reply_markup=None)
@@ -435,6 +437,7 @@ async def handle_accept_topic(callback: CallbackQuery, state: FSMContext) -> Non
 
     try:
         session = await _generate_topic_session(part, callback.from_user.id, related_topic)
+        logger.info("TIMING accept_topic part%d: topic_gen=%.2fs", part, time.perf_counter() - _t0)
     except OpenAIRateLimitError as e:
         logger.warning("Rate limit hit during topic generation: %s", e)
         await wait_msg.edit_text(_format_rate_limit_msg(e), parse_mode=ParseMode.HTML)
@@ -487,6 +490,7 @@ async def handle_accept_topic(callback: CallbackQuery, state: FSMContext) -> Non
         )
         await state.set_state(answering_state)
         await _send_question(callback.message, state, 0)
+        logger.info("TIMING accept_topic part%d: total_to_first_question=%.2fs", part, time.perf_counter() - _t0)
 
 
 # ── Custom topic ──────────────────────────────────────────
@@ -701,7 +705,9 @@ async def _send_question(message: Message, state: FSMContext, index: int) -> Non
     caption = f"Вопрос {index + 1}/{total}\n\n🎤 Ответьте голосовым сообщением."
 
     try:
+        _tts_t0 = time.perf_counter()
         audio_bytes = await text_to_voice(question)
+        logger.info("TIMING tts part%d q%d: %.2fs", part, index + 1, time.perf_counter() - _tts_t0)
         voice_file = BufferedInputFile(audio_bytes, filename="question.ogg")
         sent = await bot.send_voice(
             chat_id=message.chat.id,
@@ -808,6 +814,7 @@ async def handle_part2_voice(message: Message, state: FSMContext) -> None:
 # ── Assessment ───────────────────────────────────────────
 
 async def _run_assessment(message: Message, state: FSMContext) -> None:
+    _assess_t0 = time.perf_counter()
     await state.set_state(SpeakingStates.assessing)
     status_msg = await message.answer(PROCESSING_TEXT, parse_mode=ParseMode.HTML)
 
@@ -825,7 +832,9 @@ async def _run_assessment(message: Message, state: FSMContext) -> None:
                 path = os.path.join(tmp_dir, f"response_{i}.oga")
                 await bot.download_file(file.file_path, path)
                 ogg_paths.append(path)
+            logger.info("TIMING assessment part%d: download=%.2fs", part, time.perf_counter() - _assess_t0)
 
+            _api_t0 = time.perf_counter()
             if part == 1:
                 result = await assess_part1(
                     ogg_paths, data["questions"], data["topic"],
@@ -843,8 +852,10 @@ async def _run_assessment(message: Message, state: FSMContext) -> None:
                     ogg_paths, data["questions"], data["topic"],
                     durations=data.get("audio_durations"),
                 )
+            logger.info("TIMING assessment part%d: ai_assess=%.2fs", part, time.perf_counter() - _api_t0)
 
         response_text = format_assessment(result)
+        logger.info("TIMING assessment part%d: total=%.2fs", part, time.perf_counter() - _assess_t0)
 
         # Save to database
         audio_total = sum(data.get("audio_durations", []))

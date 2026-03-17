@@ -131,6 +131,7 @@ async def api_topic(req: TopicRequest):
     if req.part not in (1, 2, 3):
         raise HTTPException(400, "part must be 1, 2, or 3")
 
+    _t0 = time.perf_counter()
     _cleanup_old_sessions()
     session = _get_or_create_session(req.session_token)
 
@@ -174,6 +175,7 @@ async def api_topic(req: TopicRequest):
     session.questions = gen.get("questions", [])
     session.cue_card = gen.get("cue_card", "")
 
+    logger.info("TIMING /api/topic part%d: %.2fs", req.part, time.perf_counter() - _t0)
     return {
         "topic": session.topic,
         "questions": session.questions,
@@ -232,6 +234,7 @@ async def api_assess(
         if tg_user:
             session.user_id = tg_user.get("id")
 
+    _assess_t0 = time.perf_counter()
     try:
         with tempfile.TemporaryDirectory() as tmp_dir:
             if session.full_mode and session.part == 3:
@@ -346,6 +349,8 @@ async def api_assess(
                 result=result,
             )
 
+        mode = "full" if session.full_mode else f"part{session.part}"
+        logger.info("TIMING /api/assess %s: %.2fs", mode, time.perf_counter() - _assess_t0)
         return result
 
     except HTTPException:
