@@ -136,7 +136,10 @@ async def _generate_text_google(system_prompt: str, user_msg: str) -> dict:
     response = await asyncio.to_thread(
         client.models.generate_content,
         model=model_name, contents=user_msg,
-        config=types.GenerateContentConfig(system_instruction=system_prompt),
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
+        ),
     )
     return _parse_json(response.text)
 
@@ -164,7 +167,10 @@ async def _conversation_reply_google(system_prompt: str, history: list[dict]) ->
     response = await asyncio.to_thread(
         client.models.generate_content,
         model=model_name, contents=contents,
-        config=types.GenerateContentConfig(system_instruction=system_prompt),
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
+        ),
     )
     return response.text.strip()
 
@@ -216,6 +222,9 @@ async def _transcribe_voice_google(ogg_data: bytes) -> str:
             types.Part.from_bytes(data=ogg_data, mime_type="audio/ogg"),
             types.Part.from_text(text="Transcribe the speech in this audio. Return only the transcribed text, nothing else."),
         ],
+        config=types.GenerateContentConfig(
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
+        ),
     )
     return response.text.strip()
 
@@ -308,6 +317,9 @@ async def _assess_conversation_google(
     response = await asyncio.to_thread(
         client.models.generate_content,
         model=model_name, contents=content_parts,
-        config=types.GenerateContentConfig(system_instruction=system_prompt),
+        config=types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
+        ),
     )
     return _parse_json(response.text)

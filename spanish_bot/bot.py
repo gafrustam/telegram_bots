@@ -418,22 +418,23 @@ async def handle_voice_in_conversation(message: Message, state: FSMContext) -> N
     history.append({"role": "user", "content": user_text})
     exchange_count += 1
 
-    # Save user message to DB
     seq_num = len(history) - 1
-    await database.save_message(
-        conversation_id=db_conv_id,
-        role="user",
-        text=user_text,
-        audio_file_id=message.voice.file_id,
-        seq_num=seq_num,
-    )
 
     # Check if we've reached max exchanges
     if exchange_count >= level.exchanges:
-        await state.update_data(
-            conversation_history=history,
-            user_audio_file_ids=audio_ids,
-            exchange_count=exchange_count,
+        await asyncio.gather(
+            database.save_message(
+                conversation_id=db_conv_id,
+                role="user",
+                text=user_text,
+                audio_file_id=message.voice.file_id,
+                seq_num=seq_num,
+            ),
+            state.update_data(
+                conversation_history=history,
+                user_audio_file_ids=audio_ids,
+                exchange_count=exchange_count,
+            ),
         )
         await message.answer(
             "✅ Диалог завершён! Анализирую...",
@@ -442,19 +443,32 @@ async def handle_voice_in_conversation(message: Message, state: FSMContext) -> N
         await _run_assessment(message, state)
         return
 
-    # Get bot reply
+    # Get bot reply and save user message to DB in parallel
     exchanges_left = level.exchanges - exchange_count
     grammar = data.get("grammar")
-    try:
-        bot_reply = await get_conversation_reply(
+    results = await asyncio.gather(
+        database.save_message(
+            conversation_id=db_conv_id,
+            role="user",
+            text=user_text,
+            audio_file_id=message.voice.file_id,
+            seq_num=seq_num,
+        ),
+        get_conversation_reply(
             history=history,
             level=level,
             scenario=scenario,
             exchanges_left=exchanges_left,
             grammar_override=grammar,
-        )
-    except Exception:
-        logger.exception("Failed to get conversation reply")
+        ),
+        return_exceptions=True,
+    )
+    save_user_result, reply_result = results
+
+    if isinstance(save_user_result, Exception):
+        logger.exception("DB save_message(user) failed: %s", save_user_result)
+    if isinstance(reply_result, Exception):
+        logger.exception("Failed to get conversation reply: %s", reply_result)
         await message.answer(
             "⚠️ Ошибка генерации ответа. Завершаю диалог для оценки...",
             parse_mode=ParseMode.HTML,
@@ -467,41 +481,42 @@ async def handle_voice_in_conversation(message: Message, state: FSMContext) -> N
         await _run_assessment(message, state)
         return
 
+    bot_reply = reply_result
     history.append({"role": "assistant", "content": bot_reply})
 
-    # Save bot message to DB
-    await database.save_message(
-        conversation_id=db_conv_id,
-        role="bot",
-        text=bot_reply,
-        audio_file_id=None,
-        seq_num=len(history) - 1,
-    )
-
-    await state.update_data(
-        conversation_history=history,
-        user_audio_file_ids=audio_ids,
-        exchange_count=exchange_count,
-    )
-
-    # Send bot reply as voice + text
+    # TTS + DB save bot message + state update — all in parallel
     await bot.send_chat_action(message.chat.id, ChatAction.TYPING)
+    tts_result, *_ = await asyncio.gather(
+        text_to_voice(bot_reply),
+        database.save_message(
+            conversation_id=db_conv_id,
+            role="bot",
+            text=bot_reply,
+            audio_file_id=None,
+            seq_num=len(history) - 1,
+        ),
+        state.update_data(
+            conversation_history=history,
+            user_audio_file_ids=audio_ids,
+            exchange_count=exchange_count,
+        ),
+        return_exceptions=True,
+    )
 
-    try:
-        audio_bytes = await text_to_voice(bot_reply)
-        voice_file = BufferedInputFile(audio_bytes, filename="bot_reply.ogg")
-        await bot.send_voice(
-            chat_id=message.chat.id,
-            voice=voice_file,
-            caption=f"🤖 {bot_reply}\n\n💬 {exchanges_left - 1} обменов осталось",
-        )
-    except Exception:
+    if isinstance(tts_result, Exception):
         logger.exception("TTS failed for bot reply")
         await message.answer(
             f"🤖 <i>{bot_reply}</i>\n\n"
             f"💬 {exchanges_left - 1} обменов осталось\n"
             "🎤 Отвечай голосовым сообщением.",
             parse_mode=ParseMode.HTML,
+        )
+    else:
+        voice_file = BufferedInputFile(tts_result, filename="bot_reply.ogg")
+        await bot.send_voice(
+            chat_id=message.chat.id,
+            voice=voice_file,
+            caption=f"🤖 {bot_reply}\n\n💬 {exchanges_left - 1} обменов осталось",
         )
 
 
