@@ -60,7 +60,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-bot = Bot(token=os.getenv("TELEGRAM_TOKEN"))
+_telegram_token = os.getenv("TELEGRAM_TOKEN")
+if not _telegram_token:
+    logger.warning("TELEGRAM_TOKEN not set — running in web-only mode, Telegram polling disabled")
+    raise SystemExit(0)
+bot = Bot(token=_telegram_token)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
 router = Router()
