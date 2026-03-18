@@ -4,6 +4,7 @@ import logging
 import os
 import random
 import re
+import shutil
 import tempfile
 import time
 from configparser import ConfigParser
@@ -1195,6 +1196,106 @@ async def handle_photo(message: Message):
                 os.remove(tmp_path)
             except OSError:
                 pass
+        if not updater_task.done():
+            stop_event.set()
+            updater_task.cancel()
+
+
+@router.message(F.document)
+async def handle_document(message: Message):
+    global _busy, _proc, _stop_requested
+    if _busy:
+        await message.answer("⏳ Уже выполняю задачу. Дождись завершения.")
+        return
+
+    _busy = True
+    _stop_requested = False
+    caption = (message.caption or "").strip()
+    start_time = time.time()
+
+    status_msg = await message.answer("📎 Загружаю файл и запускаю Claude Code...", reply_markup=STOP_KB)
+    stop_event = asyncio.Event()
+    updater_task = asyncio.create_task(
+        _update_status(status_msg, start_time, stop_event)
+    )
+
+    tmp_dir = None
+    tmp_path = None
+    try:
+        doc = message.document
+        original_name = doc.file_name or "uploaded_file"
+        tmp_dir = tempfile.mkdtemp(prefix="coder_upload_")
+        tmp_path = os.path.join(tmp_dir, original_name)
+
+        tg_file = await message.bot.get_file(doc.file_id)
+        await message.bot.download_file(tg_file.file_path, tmp_path)
+
+        if caption:
+            text = f"{caption}\n\nФайл сохранён в: {tmp_path}"
+        else:
+            text = f"Пользователь прислал файл: {original_name}\nПуть: {tmp_path}"
+
+        old_head = _get_head()
+
+        cmd = [CLAUDE_PATH, "-p", text, "--dangerously-skip-permissions", "--output-format", "text"]
+        env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+
+        _proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            cwd=REPO_ROOT,
+            env=env,
+        )
+
+        stdout, _ = await _proc.communicate()
+        output = stdout.decode("utf-8", errors="replace")
+        elapsed = int(time.time() - start_time)
+        mins, secs = divmod(elapsed, 60)
+
+        stop_event.set()
+
+        if _stop_requested:
+            try:
+                await status_msg.edit_text(f"⏹ Остановлено ({mins}:{secs:02d})")
+            except Exception:
+                pass
+            if output.strip():
+                await _send_formatted(message.chat.id, output)
+            return
+
+        try:
+            await status_msg.edit_text(f"✅ Готово за {mins}:{secs:02d}")
+        except Exception:
+            pass
+
+        if _is_rate_limited(output):
+            await message.answer("⚠️ Ассистент сообщает о rate limit. Попробуй позже.")
+
+        await _send_formatted(message.chat.id, output)
+        await _commit_and_push(message.chat.id)
+
+        changed_dirs = _get_changed_dirs(old_head)
+        if changed_dirs:
+            await _restart_services(changed_dirs, message.chat.id)
+
+        try:
+            await message.answer(f"\n{random.choice(CREATION_QUOTES)}")
+        except Exception:
+            pass
+
+    except Exception as e:
+        stop_event.set()
+        log.exception("Error running assistant with document")
+        try:
+            await message.answer(f"❌ Ошибка: {e}")
+        except Exception:
+            pass
+    finally:
+        _busy = False
+        _proc = None
+        if tmp_dir:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
         if not updater_task.done():
             stop_event.set()
             updater_task.cancel()
