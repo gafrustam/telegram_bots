@@ -1,6 +1,7 @@
-import asyncio
 import logging
 import os
+
+from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -37,14 +38,19 @@ LEVEL_DESCRIPTIONS = {
     ),
 }
 
+_openai_client: AsyncOpenAI | None = None
+
+
+def _get_client() -> AsyncOpenAI:
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+    return _openai_client
+
 
 async def generate_passage(level: str, word_count: int) -> str:
     """Generate a natural English passage for shadowing at the given CEFR level."""
-    from google import genai
-
-    client = genai.Client(api_key=os.getenv("GOOGLE_AI_API_KEY", ""))
-    model_name = os.getenv("GOOGLE_TEXT_MODEL", "gemini-2.5-flash")
-
+    model = os.getenv("OPENAI_TEXT_MODEL", "gpt-4o-mini")
     level_desc = LEVEL_DESCRIPTIONS.get(level, LEVEL_DESCRIPTIONS["C1"])
 
     prompt = (
@@ -62,12 +68,14 @@ async def generate_passage(level: str, word_count: int) -> str:
         f"Return ONLY the passage text. No title, no introduction, no quotes, no explanation."
     )
 
-    logger.info("Generating passage level=%s word_count=%d", level, word_count)
+    logger.info("Generating passage level=%s word_count=%d model=%s", level, word_count, model)
 
-    def _call():
-        return client.models.generate_content(model=model_name, contents=prompt)
-
-    response = await asyncio.to_thread(_call)
-    text = response.text.strip()
+    client = _get_client()
+    response = await client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.8,
+    )
+    text = response.choices[0].message.content.strip()
     logger.info("Generated passage word_count_actual=%d", len(text.split()))
     return text

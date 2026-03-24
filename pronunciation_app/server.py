@@ -1,8 +1,9 @@
 """
 Pronunciation Practice – FastAPI backend
-Port 8005. Accepts audio + word, sends to Gemini for pronunciation assessment.
+Port 8005. Accepts audio + word, sends to OpenAI for pronunciation assessment.
 """
 import asyncio
+import base64
 import json
 import logging
 import os
@@ -17,6 +18,7 @@ load_dotenv()
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from openai import AsyncOpenAI
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 Path("logs").mkdir(exist_ok=True)
@@ -28,28 +30,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ── Gemini client ─────────────────────────────────────────────────────────────
-from google import genai
-from google.genai import types
+# ── OpenAI client ─────────────────────────────────────────────────────────────
+_openai_client: AsyncOpenAI | None = None
 
-_client = genai.Client(api_key=os.getenv("GOOGLE_AI_API_KEY", ""))
-_model = os.getenv("GOOGLE_AUDIO_MODEL", "gemini-2.5-flash")
+
+def _get_client() -> AsyncOpenAI:
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+    return _openai_client
+
+
+_model = os.getenv("OPENAI_MODEL", "gpt-4o-audio-preview")
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _detect_mime(audio_bytes: bytes) -> str:
-    if len(audio_bytes) < 4:
-        return "audio/webm"
-    if audio_bytes[:4] == b"\x1a\x45\xdf\xa3":
-        return "audio/webm"
-    if audio_bytes[:4] == b"OggS":
-        return "audio/ogg"
-    if audio_bytes[:3] == b"ID3" or audio_bytes[:2] in (b"\xff\xfb", b"\xff\xf3", b"\xff\xf2"):
-        return "audio/mpeg"
-    if audio_bytes[:4] == b"RIFF":
-        return "audio/wav"
-    return "audio/webm"
-
 
 def _to_mp3(audio_bytes: bytes) -> bytes:
     """Convert audio bytes to mp3 using pydub (sync, run in thread)."""
@@ -118,23 +112,24 @@ async def assess_pronunciation(
         logger.info("Assessing word='%s' audio_size=%d bytes mime=%s",
                     word, len(audio_bytes), audio.content_type)
 
-        # Convert to mp3 for reliable Gemini processing
+        # Convert to mp3 for reliable processing
         mp3_bytes = await asyncio.to_thread(_to_mp3, audio_bytes)
+        audio_b64 = base64.b64encode(mp3_bytes).decode("utf-8")
 
         prompt = ASSESS_TEMPLATE.format(word=word, ipa=ipa, comment=comment)
 
-        def _call():
-            return _client.models.generate_content(
-                model=_model,
-                contents=[
-                    types.Part.from_bytes(data=mp3_bytes, mime_type="audio/mp3"),
-                    types.Part.from_text(text=prompt),
-                ],
-                config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT),
-            )
-
-        response = await asyncio.to_thread(_call)
-        result = _parse_json(response.text)
+        client = _get_client()
+        response = await client.chat.completions.create(
+            model=_model, modalities=["text"],
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": [
+                    {"type": "input_audio", "input_audio": {"data": audio_b64, "format": "mp3"}},
+                    {"type": "text", "text": prompt},
+                ]},
+            ],
+        )
+        result = _parse_json(response.choices[0].message.content)
 
         correct = bool(result.get("correct", False))
         feedback = str(result.get("feedback", ""))

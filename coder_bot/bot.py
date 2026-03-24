@@ -952,25 +952,14 @@ async def cb_stop_task(callback: CallbackQuery):
 
 
 async def _transcribe_voice(path: str, mime: str) -> str | None:
-    from google import genai
-    from google.genai import types
+    from openai import OpenAI
 
-    client = genai.Client(api_key=os.getenv("GOOGLE_AI_API_KEY"))
-    model_name = os.getenv("GOOGLE_AUDIO_MODEL", "gemini-2.5-flash")
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
     def _do():
         with open(path, "rb") as f:
-            audio_bytes = f.read()
-        response = client.models.generate_content(
-            model=model_name,
-            contents=[
-                types.Part.from_bytes(data=audio_bytes, mime_type=mime),
-                types.Part.from_text(
-                    text="Transcribe the speech in this audio. Return only the transcribed text, nothing else."
-                ),
-            ],
-        )
-        return response.text.strip() or None
+            r = client.audio.transcriptions.create(model="whisper-1", file=f)
+            return getattr(r, "text", None) or None
 
     return await asyncio.to_thread(_do)
 

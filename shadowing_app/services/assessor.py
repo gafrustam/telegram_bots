@@ -1,8 +1,11 @@
 import asyncio
+import base64
 import json
 import logging
 import os
 import tempfile
+
+from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +61,15 @@ Please assess the user's shadowing performance and return ONLY valid JSON (no ma
   "comment": "..."
 }}"""
 
+_openai_client: AsyncOpenAI | None = None
+
+
+def _get_client() -> AsyncOpenAI:
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+    return _openai_client
+
 
 def _detect_mime_type(audio_bytes: bytes) -> str:
     """Detect audio MIME type from magic bytes."""
@@ -93,12 +105,11 @@ def _parse_json(text: str) -> dict:
         raise
 
 
-def _convert_to_mp3(audio_bytes: bytes, mime_type: str, output_path: str) -> None:
+def _convert_to_mp3(audio_bytes: bytes, output_path: str) -> None:
     from pydub import AudioSegment
     import io
 
     buf = io.BytesIO(audio_bytes)
-    # pydub auto-detects format via ffmpeg when using from_file
     audio = AudioSegment.from_file(buf)
     audio.export(output_path, format="mp3", bitrate="64k")
 
@@ -109,24 +120,21 @@ async def assess_shadowing(
     level: str,
     text: str,
 ) -> dict:
-    """Assess user's shadowing attempt against the original using Gemini multimodal."""
-    from google import genai
-    from google.genai import types
-
-    client = genai.Client(api_key=os.getenv("GOOGLE_AI_API_KEY", ""))
-    model_name = os.getenv("GOOGLE_AUDIO_MODEL", "gemini-2.5-flash")
-
+    """Assess user's shadowing attempt against the original using OpenAI multimodal."""
+    model = os.getenv("OPENAI_MODEL", "gpt-4o-audio-preview")
     user_mime = _detect_mime_type(user_audio)
     logger.info("Assessing shadowing level=%s user_mime=%s orig_bytes=%d user_bytes=%d",
                 level, user_mime, len(original_audio), len(user_audio))
 
-    # Convert user audio to MP3 for consistent processing
     with tempfile.TemporaryDirectory() as tmp_dir:
-        import os as _os
-        user_mp3_path = _os.path.join(tmp_dir, "user.mp3")
-        await asyncio.to_thread(_convert_to_mp3, user_audio, user_mime, user_mp3_path)
+        orig_mp3_path = os.path.join(tmp_dir, "original.mp3")
+        user_mp3_path = os.path.join(tmp_dir, "user.mp3")
+        await asyncio.to_thread(_convert_to_mp3, original_audio, orig_mp3_path)
+        await asyncio.to_thread(_convert_to_mp3, user_audio, user_mp3_path)
+        with open(orig_mp3_path, "rb") as f:
+            orig_b64 = base64.b64encode(f.read()).decode("utf-8")
         with open(user_mp3_path, "rb") as f:
-            user_mp3 = f.read()
+            user_b64 = base64.b64encode(f.read()).decode("utf-8")
 
     prompt = ASSESSMENT_PROMPT_TEMPLATE.format(
         level=level,
@@ -134,22 +142,22 @@ async def assess_shadowing(
     )
 
     content_parts = [
-        types.Part.from_text(text="[ORIGINAL RECORDING — native speaker:]"),
-        types.Part.from_bytes(data=original_audio, mime_type="audio/mp3"),
-        types.Part.from_text(text="[USER RECORDING — shadowing attempt:]"),
-        types.Part.from_bytes(data=user_mp3, mime_type="audio/mp3"),
-        types.Part.from_text(text=prompt),
+        {"type": "text", "text": "[ORIGINAL RECORDING — native speaker:]"},
+        {"type": "input_audio", "input_audio": {"data": orig_b64, "format": "mp3"}},
+        {"type": "text", "text": "[USER RECORDING — shadowing attempt:]"},
+        {"type": "input_audio", "input_audio": {"data": user_b64, "format": "mp3"}},
+        {"type": "text", "text": prompt},
     ]
 
-    def _call():
-        return client.models.generate_content(
-            model=model_name,
-            contents=content_parts,
-            config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT),
-        )
-
-    response = await asyncio.to_thread(_call)
-    result = _parse_json(response.text)
+    client = _get_client()
+    response = await client.chat.completions.create(
+        model=model, modalities=["text"],
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": content_parts},
+        ],
+    )
+    result = _parse_json(response.choices[0].message.content)
 
     # Clamp and validate values
     for key in ("pronunciation", "rhythm", "intonation", "fluency", "overall"):

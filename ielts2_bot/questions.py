@@ -1,12 +1,22 @@
-import asyncio
-import json
 import logging
 import os
 from pathlib import Path
 
+from openai import AsyncOpenAI
+import json
+
 logger = logging.getLogger(__name__)
 
 PROMPT_PATH = Path(__file__).parent / "prompts" / "generate_questions.txt"
+
+_openai_client: AsyncOpenAI | None = None
+
+
+def _get_client() -> AsyncOpenAI:
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    return _openai_client
 
 
 def _load_prompt() -> str:
@@ -37,9 +47,6 @@ async def generate_session(
     related_topic: str | None = None,
 ) -> dict:
     """Generate a topic + questions/cue_card for the given IELTS Speaking part."""
-    from google import genai
-    from google.genai import types
-
     system_prompt = _load_prompt()
 
     user_msg = f"Generate questions for IELTS Speaking Part {part}."
@@ -57,22 +64,20 @@ async def generate_session(
             f'broader themes connected to this topic.'
         )
 
-    api_key = os.getenv("GOOGLE_API_KEY")
-    model_name = os.getenv("GOOGLE_TEXT_MODEL", "gemini-2.5-flash")
-    logger.info("Generating part%d questions via Gemini (%s)", part, model_name)
+    model = os.getenv("OPENAI_TEXT_MODEL", "gpt-4o-mini")
+    logger.info("Generating part%d questions via OpenAI (%s)", part, model)
 
     try:
-        client = genai.Client(api_key=api_key)
-        response = await asyncio.to_thread(
-            client.models.generate_content,
-            model=model_name,
-            contents=user_msg,
-            config=types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                temperature=1.0,
-            ),
+        client = _get_client()
+        response = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_msg},
+            ],
+            temperature=1.0,
         )
-        result = _parse_json(response.text)
+        result = _parse_json(response.choices[0].message.content)
         logger.info("Part%d questions generated OK", part)
         return result
     except Exception as e:
