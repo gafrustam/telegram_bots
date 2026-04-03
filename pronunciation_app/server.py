@@ -1,6 +1,6 @@
 """
 Pronunciation Practice – FastAPI backend
-Port 8005. Accepts audio + word, sends to OpenAI for pronunciation assessment.
+Port 8005. Accepts audio + word, sends to AI for pronunciation assessment.
 """
 import asyncio
 import base64
@@ -30,18 +30,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ── OpenAI client ─────────────────────────────────────────────────────────────
+_GOOGLE_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+
 _openai_client: AsyncOpenAI | None = None
+_google_client: AsyncOpenAI | None = None
 
 
-def _get_client() -> AsyncOpenAI:
+def _get_openai_client() -> AsyncOpenAI:
     global _openai_client
     if _openai_client is None:
         _openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
     return _openai_client
 
-
-_model = os.getenv("OPENAI_MODEL", "gpt-4o-audio-preview")
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -96,6 +96,42 @@ or
 {{"correct": false, "feedback": "Краткое объяснение ошибки на русском (1 предложение)."}}"""
 
 
+async def _assess_openai(mp3_bytes: bytes, prompt: str) -> dict:
+    audio_b64 = base64.b64encode(mp3_bytes).decode("utf-8")
+    model = os.getenv("OPENAI_MODEL", "gpt-4o-audio-preview")
+    client = _get_openai_client()
+    response = await client.chat.completions.create(
+        model=model, modalities=["text"],
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": [
+                {"type": "input_audio", "input_audio": {"data": audio_b64, "format": "mp3"}},
+                {"type": "text", "text": prompt},
+            ]},
+        ],
+    )
+    return _parse_json(response.choices[0].message.content)
+
+
+async def _assess_google(mp3_bytes: bytes, prompt: str) -> dict:
+    from google import genai
+    from google.genai import types
+
+    client = genai.Client(api_key=os.getenv("GOOGLE_AI_API_KEY", ""))
+    model_name = os.getenv("GOOGLE_AUDIO_MODEL", "gemini-2.5-flash")
+
+    content_parts = [
+        types.Part.from_bytes(data=mp3_bytes, mime_type="audio/mp3"),
+        types.Part.from_text(text=prompt),
+    ]
+    response = await asyncio.to_thread(
+        client.models.generate_content,
+        model=model_name, contents=content_parts,
+        config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT),
+    )
+    return _parse_json(response.text)
+
+
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(title="Pronunciation Practice")
 
@@ -109,27 +145,17 @@ async def assess_pronunciation(
 ):
     try:
         audio_bytes = await audio.read()
-        logger.info("Assessing word='%s' audio_size=%d bytes mime=%s",
-                    word, len(audio_bytes), audio.content_type)
+        provider = os.getenv("AI_PROVIDER", "openai").lower()
+        logger.info("Assessing word='%s' provider=%s audio_size=%d bytes",
+                    word, provider, len(audio_bytes))
 
-        # Convert to mp3 for reliable processing
         mp3_bytes = await asyncio.to_thread(_to_mp3, audio_bytes)
-        audio_b64 = base64.b64encode(mp3_bytes).decode("utf-8")
-
         prompt = ASSESS_TEMPLATE.format(word=word, ipa=ipa, comment=comment)
 
-        client = _get_client()
-        response = await client.chat.completions.create(
-            model=_model, modalities=["text"],
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": [
-                    {"type": "input_audio", "input_audio": {"data": audio_b64, "format": "mp3"}},
-                    {"type": "text", "text": prompt},
-                ]},
-            ],
-        )
-        result = _parse_json(response.choices[0].message.content)
+        if provider == "google":
+            result = await _assess_google(mp3_bytes, prompt)
+        else:
+            result = await _assess_openai(mp3_bytes, prompt)
 
         correct = bool(result.get("correct", False))
         feedback = str(result.get("feedback", ""))

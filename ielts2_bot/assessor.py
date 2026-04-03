@@ -16,7 +16,7 @@ PROMPTS_DIR = Path(__file__).parent / "prompts"
 _openai_client: AsyncOpenAI | None = None
 
 
-def _get_client() -> AsyncOpenAI:
+def _get_openai_client() -> AsyncOpenAI:
     global _openai_client
     if _openai_client is None:
         _openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -110,36 +110,75 @@ async def _assess_multi(
         prompt_file, topic=topic,
         n_questions=str(n), questions_list=questions_list,
     )
-    model = os.getenv("OPENAI_MODEL", "gpt-4o-audio-preview")
-    logger.info("Assessing part%s via OpenAI n_audio=%d", part_label, len(ogg_paths))
-
+    provider = os.getenv("AI_PROVIDER", "openai").lower()
+    logger.info("Assessing part%s via provider=%s n_audio=%d", part_label, provider, len(ogg_paths))
     try:
-        content_parts: list[dict] = []
-        with tempfile.TemporaryDirectory() as tmp:
-            for i, (ogg_path, question) in enumerate(zip(ogg_paths, questions)):
-                mp3 = os.path.join(tmp, f"r{i}.mp3")
-                await asyncio.to_thread(_convert_audio, ogg_path, mp3)
-                audio_b64 = _encode_mp3(mp3)
-                dur_info = f" (duration: {durations[i]} seconds)" if durations and i < len(durations) else ""
-                content_parts.append({"type": "text", "text": f"Question {i + 1}: {question}{dur_info}"})
-                content_parts.append({"type": "input_audio", "input_audio": {"data": audio_b64, "format": "mp3"}})
-
-        content_parts.append({"type": "text", "text": "Now assess the overall performance across all responses above."})
-
-        client = _get_client()
-        response = await client.chat.completions.create(
-            model=model, modalities=["text"],
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": content_parts},
-            ],
-        )
-        result = _parse_json(response.choices[0].message.content)
+        if provider == "google":
+            result = await _assess_multi_google(ogg_paths, questions, system_prompt, durations)
+        else:
+            result = await _assess_multi_openai(ogg_paths, questions, system_prompt, durations)
         logger.info("Part%s assessment OK band=%.1f", part_label, result.get("overall_band", 0))
         return result
     except Exception as e:
-        logger.error("Part%s assessment failed: %s", part_label, e)
+        logger.error("Part%s assessment failed [provider=%s]: %s", part_label, provider, e)
         raise
+
+
+async def _assess_multi_openai(
+    ogg_paths: list[str], questions: list[str],
+    system_prompt: str, durations: list[int] | None,
+) -> dict:
+    model = os.getenv("OPENAI_MODEL", "gpt-4o-audio-preview")
+    content_parts: list[dict] = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for i, (ogg_path, question) in enumerate(zip(ogg_paths, questions)):
+            mp3 = os.path.join(tmp, f"r{i}.mp3")
+            await asyncio.to_thread(_convert_audio, ogg_path, mp3)
+            audio_b64 = _encode_mp3(mp3)
+            dur_info = f" (duration: {durations[i]} seconds)" if durations and i < len(durations) else ""
+            content_parts.append({"type": "text", "text": f"Question {i + 1}: {question}{dur_info}"})
+            content_parts.append({"type": "input_audio", "input_audio": {"data": audio_b64, "format": "mp3"}})
+    content_parts.append({"type": "text", "text": "Now assess the overall performance across all responses above."})
+
+    client = _get_openai_client()
+    response = await client.chat.completions.create(
+        model=model, modalities=["text"],
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": content_parts},
+        ],
+    )
+    return _parse_json(response.choices[0].message.content)
+
+
+async def _assess_multi_google(
+    ogg_paths: list[str], questions: list[str],
+    system_prompt: str, durations: list[int] | None,
+) -> dict:
+    from google import genai
+    from google.genai import types
+
+    client = genai.Client(api_key=os.getenv("GOOGLE_AI_API_KEY"))
+    model_name = os.getenv("GOOGLE_AUDIO_MODEL", "gemini-2.5-flash")
+
+    content_parts: list = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for i, (ogg_path, question) in enumerate(zip(ogg_paths, questions)):
+            mp3 = os.path.join(tmp, f"r{i}.mp3")
+            await asyncio.to_thread(_convert_audio, ogg_path, mp3)
+            dur_info = f" (duration: {durations[i]} seconds)" if durations and i < len(durations) else ""
+            content_parts.append(types.Part.from_text(text=f"Question {i + 1}: {question}{dur_info}"))
+            with open(mp3, "rb") as f:
+                audio_bytes = f.read()
+            content_parts.append(types.Part.from_bytes(data=audio_bytes, mime_type="audio/mp3"))
+    content_parts.append(types.Part.from_text(text="Now assess the overall performance across all responses above."))
+
+    response = await asyncio.to_thread(
+        client.models.generate_content,
+        model=model_name, contents=content_parts,
+        config=types.GenerateContentConfig(system_instruction=system_prompt),
+    )
+    return _parse_json(response.text)
 
 
 async def assess_part2(
@@ -150,29 +189,61 @@ async def assess_part2(
         duration_seconds=str(round(duration_seconds)),
         duration_display=_format_duration(duration_seconds),
     )
-    model = os.getenv("OPENAI_MODEL", "gpt-4o-audio-preview")
-    logger.info("Assessing part2 via OpenAI duration=%.1fs", duration_seconds)
-
+    provider = os.getenv("AI_PROVIDER", "openai").lower()
+    logger.info("Assessing part2 via provider=%s duration=%.1fs", provider, duration_seconds)
     try:
-        with tempfile.TemporaryDirectory() as tmp:
-            mp3 = os.path.join(tmp, "r.mp3")
-            await asyncio.to_thread(_convert_audio, ogg_path, mp3, 120_000)
-            audio_b64 = _encode_mp3(mp3)
-
-        client = _get_client()
-        response = await client.chat.completions.create(
-            model=model, modalities=["text"],
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": [
-                    {"type": "input_audio", "input_audio": {"data": audio_b64, "format": "mp3"}},
-                    {"type": "text", "text": "Assess this Part 2 Long Turn response."},
-                ]},
-            ],
-        )
-        result = _parse_json(response.choices[0].message.content)
+        if provider == "google":
+            result = await _assess_part2_google(ogg_path, system_prompt)
+        else:
+            result = await _assess_part2_openai(ogg_path, system_prompt)
         logger.info("Part2 assessment OK band=%.1f", result.get("overall_band", 0))
         return result
     except Exception as e:
-        logger.error("Part2 assessment failed: %s", e)
+        logger.error("Part2 assessment failed [provider=%s]: %s", provider, e)
         raise
+
+
+async def _assess_part2_openai(ogg_path: str, system_prompt: str) -> dict:
+    model = os.getenv("OPENAI_MODEL", "gpt-4o-audio-preview")
+    with tempfile.TemporaryDirectory() as tmp:
+        mp3 = os.path.join(tmp, "r.mp3")
+        await asyncio.to_thread(_convert_audio, ogg_path, mp3, 120_000)
+        audio_b64 = _encode_mp3(mp3)
+
+    client = _get_openai_client()
+    response = await client.chat.completions.create(
+        model=model, modalities=["text"],
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": [
+                {"type": "input_audio", "input_audio": {"data": audio_b64, "format": "mp3"}},
+                {"type": "text", "text": "Assess this Part 2 Long Turn response."},
+            ]},
+        ],
+    )
+    return _parse_json(response.choices[0].message.content)
+
+
+async def _assess_part2_google(ogg_path: str, system_prompt: str) -> dict:
+    from google import genai
+    from google.genai import types
+
+    client = genai.Client(api_key=os.getenv("GOOGLE_AI_API_KEY"))
+    model_name = os.getenv("GOOGLE_AUDIO_MODEL", "gemini-2.5-flash")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        mp3 = os.path.join(tmp, "r.mp3")
+        await asyncio.to_thread(_convert_audio, ogg_path, mp3, 120_000)
+        with open(mp3, "rb") as f:
+            audio_bytes = f.read()
+
+    content_parts = [
+        types.Part.from_bytes(data=audio_bytes, mime_type="audio/mp3"),
+        types.Part.from_text(text="Assess this Part 2 Long Turn response."),
+    ]
+    response = await asyncio.to_thread(
+        client.models.generate_content,
+        model=model_name, contents=content_parts,
+        config=types.GenerateContentConfig(system_instruction=system_prompt),
+    )
+    return _parse_json(response.text)

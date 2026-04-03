@@ -38,19 +38,36 @@ LEVEL_DESCRIPTIONS = {
     ),
 }
 
+_GOOGLE_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+
 _openai_client: AsyncOpenAI | None = None
+_google_client: AsyncOpenAI | None = None
 
 
 def _get_client() -> AsyncOpenAI:
-    global _openai_client
+    global _openai_client, _google_client
+    if os.getenv("AI_PROVIDER", "openai").lower() == "google":
+        if _google_client is None:
+            _google_client = AsyncOpenAI(
+                api_key=os.getenv("GOOGLE_AI_API_KEY", ""),
+                base_url=_GOOGLE_BASE_URL,
+            )
+        return _google_client
     if _openai_client is None:
         _openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
     return _openai_client
 
 
+def _get_model() -> str:
+    if os.getenv("AI_PROVIDER", "openai").lower() == "google":
+        return os.getenv("GOOGLE_TEXT_MODEL", "gemini-2.5-flash")
+    return os.getenv("OPENAI_TEXT_MODEL", "gpt-4o-mini")
+
+
 async def generate_passage(level: str, word_count: int) -> str:
     """Generate a natural English passage for shadowing at the given CEFR level."""
-    model = os.getenv("OPENAI_TEXT_MODEL", "gpt-4o-mini")
+    model = _get_model()
+    provider = os.getenv("AI_PROVIDER", "openai").lower()
     level_desc = LEVEL_DESCRIPTIONS.get(level, LEVEL_DESCRIPTIONS["C1"])
 
     prompt = (
@@ -68,7 +85,8 @@ async def generate_passage(level: str, word_count: int) -> str:
         f"Return ONLY the passage text. No title, no introduction, no quotes, no explanation."
     )
 
-    logger.info("Generating passage level=%s word_count=%d model=%s", level, word_count, model)
+    logger.info("Generating passage level=%s word_count=%d provider=%s model=%s",
+                level, word_count, provider, model)
 
     client = _get_client()
     response = await client.chat.completions.create(

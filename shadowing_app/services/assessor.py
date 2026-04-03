@@ -64,7 +64,7 @@ Please assess the user's shadowing performance and return ONLY valid JSON (no ma
 _openai_client: AsyncOpenAI | None = None
 
 
-def _get_client() -> AsyncOpenAI:
+def _get_openai_client() -> AsyncOpenAI:
     global _openai_client
     if _openai_client is None:
         _openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
@@ -114,18 +114,10 @@ def _convert_to_mp3(audio_bytes: bytes, output_path: str) -> None:
     audio.export(output_path, format="mp3", bitrate="64k")
 
 
-async def assess_shadowing(
-    original_audio: bytes,
-    user_audio: bytes,
-    level: str,
-    text: str,
+async def _assess_openai(
+    original_audio: bytes, user_audio: bytes, level: str, text: str,
 ) -> dict:
-    """Assess user's shadowing attempt against the original using OpenAI multimodal."""
     model = os.getenv("OPENAI_MODEL", "gpt-4o-audio-preview")
-    user_mime = _detect_mime_type(user_audio)
-    logger.info("Assessing shadowing level=%s user_mime=%s orig_bytes=%d user_bytes=%d",
-                level, user_mime, len(original_audio), len(user_audio))
-
     with tempfile.TemporaryDirectory() as tmp_dir:
         orig_mp3_path = os.path.join(tmp_dir, "original.mp3")
         user_mp3_path = os.path.join(tmp_dir, "user.mp3")
@@ -140,7 +132,6 @@ async def assess_shadowing(
         level=level,
         text=text[:600] + ("..." if len(text) > 600 else ""),
     )
-
     content_parts = [
         {"type": "text", "text": "[ORIGINAL RECORDING — native speaker:]"},
         {"type": "input_audio", "input_audio": {"data": orig_b64, "format": "mp3"}},
@@ -148,8 +139,7 @@ async def assess_shadowing(
         {"type": "input_audio", "input_audio": {"data": user_b64, "format": "mp3"}},
         {"type": "text", "text": prompt},
     ]
-
-    client = _get_client()
+    client = _get_openai_client()
     response = await client.chat.completions.create(
         model=model, modalities=["text"],
         messages=[
@@ -157,7 +147,63 @@ async def assess_shadowing(
             {"role": "user", "content": content_parts},
         ],
     )
-    result = _parse_json(response.choices[0].message.content)
+    return _parse_json(response.choices[0].message.content)
+
+
+async def _assess_google(
+    original_audio: bytes, user_audio: bytes, level: str, text: str,
+) -> dict:
+    from google import genai
+    from google.genai import types
+
+    client = genai.Client(api_key=os.getenv("GOOGLE_AI_API_KEY", ""))
+    model_name = os.getenv("GOOGLE_AUDIO_MODEL", "gemini-2.5-flash")
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        orig_mp3_path = os.path.join(tmp_dir, "original.mp3")
+        user_mp3_path = os.path.join(tmp_dir, "user.mp3")
+        await asyncio.to_thread(_convert_to_mp3, original_audio, orig_mp3_path)
+        await asyncio.to_thread(_convert_to_mp3, user_audio, user_mp3_path)
+        with open(orig_mp3_path, "rb") as f:
+            orig_bytes = f.read()
+        with open(user_mp3_path, "rb") as f:
+            user_bytes = f.read()
+
+    prompt = ASSESSMENT_PROMPT_TEMPLATE.format(
+        level=level,
+        text=text[:600] + ("..." if len(text) > 600 else ""),
+    )
+    content_parts = [
+        types.Part.from_text(text="[ORIGINAL RECORDING — native speaker:]"),
+        types.Part.from_bytes(data=orig_bytes, mime_type="audio/mp3"),
+        types.Part.from_text(text="[USER RECORDING — shadowing attempt:]"),
+        types.Part.from_bytes(data=user_bytes, mime_type="audio/mp3"),
+        types.Part.from_text(text=prompt),
+    ]
+    response = await asyncio.to_thread(
+        client.models.generate_content,
+        model=model_name, contents=content_parts,
+        config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT),
+    )
+    return _parse_json(response.text)
+
+
+async def assess_shadowing(
+    original_audio: bytes,
+    user_audio: bytes,
+    level: str,
+    text: str,
+) -> dict:
+    """Assess user's shadowing attempt against the original."""
+    provider = os.getenv("AI_PROVIDER", "openai").lower()
+    user_mime = _detect_mime_type(user_audio)
+    logger.info("Assessing shadowing level=%s provider=%s user_mime=%s orig_bytes=%d user_bytes=%d",
+                level, provider, user_mime, len(original_audio), len(user_audio))
+
+    if provider == "google":
+        result = await _assess_google(original_audio, user_audio, level, text)
+    else:
+        result = await _assess_openai(original_audio, user_audio, level, text)
 
     # Clamp and validate values
     for key in ("pronunciation", "rhythm", "intonation", "fluency", "overall"):

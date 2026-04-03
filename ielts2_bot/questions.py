@@ -9,14 +9,30 @@ logger = logging.getLogger(__name__)
 
 PROMPT_PATH = Path(__file__).parent / "prompts" / "generate_questions.txt"
 
+_GOOGLE_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+
 _openai_client: AsyncOpenAI | None = None
+_google_client: AsyncOpenAI | None = None
 
 
 def _get_client() -> AsyncOpenAI:
-    global _openai_client
+    global _openai_client, _google_client
+    if os.getenv("AI_PROVIDER", "openai").lower() == "google":
+        if _google_client is None:
+            _google_client = AsyncOpenAI(
+                api_key=os.getenv("GOOGLE_AI_API_KEY"),
+                base_url=_GOOGLE_BASE_URL,
+            )
+        return _google_client
     if _openai_client is None:
         _openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     return _openai_client
+
+
+def _get_model() -> str:
+    if os.getenv("AI_PROVIDER", "openai").lower() == "google":
+        return os.getenv("GOOGLE_TEXT_MODEL", "gemini-2.5-flash")
+    return os.getenv("OPENAI_TEXT_MODEL", "gpt-4o-mini")
 
 
 def _load_prompt() -> str:
@@ -48,6 +64,8 @@ async def generate_session(
 ) -> dict:
     """Generate a topic + questions/cue_card for the given IELTS Speaking part."""
     system_prompt = _load_prompt()
+    provider = os.getenv("AI_PROVIDER", "openai").lower()
+    model = _get_model()
 
     user_msg = f"Generate questions for IELTS Speaking Part {part}."
     if topic:
@@ -64,8 +82,7 @@ async def generate_session(
             f'broader themes connected to this topic.'
         )
 
-    model = os.getenv("OPENAI_TEXT_MODEL", "gpt-4o-mini")
-    logger.info("Generating part%d questions via OpenAI (%s)", part, model)
+    logger.info("Generating part%d questions via provider=%s (%s)", part, provider, model)
 
     try:
         client = _get_client()
