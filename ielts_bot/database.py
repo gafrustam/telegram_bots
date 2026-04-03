@@ -24,7 +24,7 @@ async def init_db() -> None:
     _pool = await asyncpg.create_pool(dsn=dsn, min_size=2, max_size=10, command_timeout=15)
     schema_sql = SCHEMA_PATH.read_text(encoding="utf-8")
     async with _pool.acquire() as conn:
-        await conn.execute(schema_sql)
+        await conn.execute(schema_sql, timeout=None)
     logger.info("Database initialized")
 
 
