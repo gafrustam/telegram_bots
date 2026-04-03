@@ -208,7 +208,7 @@ async def _transcribe_voice_google(ogg_data: bytes) -> str:
     from google.genai import types
 
     client = genai.Client(api_key=os.getenv("GOOGLE_AI_API_KEY"))
-    model_name = os.getenv("GOOGLE_TRANSCRIBE_MODEL", "gemini-2.0-flash")
+    model_name = os.getenv("GOOGLE_TRANSCRIBE_MODEL", "gemini-2.5-flash")
     response = await asyncio.to_thread(
         client.models.generate_content,
         model=model_name,
