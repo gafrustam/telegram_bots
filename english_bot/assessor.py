@@ -208,7 +208,7 @@ async def _transcribe_voice_google(ogg_data: bytes) -> str:
     from google.genai import types
 
     client = genai.Client(api_key=os.getenv("GOOGLE_AI_API_KEY"))
-    model_name = os.getenv("GOOGLE_AUDIO_MODEL", "gemini-2.5-flash")
+    model_name = os.getenv("GOOGLE_TRANSCRIBE_MODEL", "gemini-2.0-flash")
     response = await asyncio.to_thread(
         client.models.generate_content,
         model=model_name,
@@ -290,7 +290,7 @@ async def _assess_conversation_google(
     from google.genai import types
 
     client = genai.Client(api_key=os.getenv("GOOGLE_AI_API_KEY"))
-    model_name = os.getenv("GOOGLE_AUDIO_MODEL", "gemini-2.5-flash")
+    model_name = os.getenv("GOOGLE_ASSESS_MODEL", "gemini-2.5-pro")
 
     content_parts: list = [
         types.Part.from_text(text=f"Conversation transcript:\n{transcript_text}\n\nNow here are the student's audio recordings:"),
