@@ -10,6 +10,7 @@ from openai import AsyncOpenAI
 from pydub import AudioSegment
 
 from difficulty import DifficultyLevel
+from grammars import GRAMMARS_BY_LEVEL
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,7 @@ def _encode_mp3(mp3_path: str) -> str:
 async def generate_scenario(level: DifficultyLevel, topic: str, user_id: int | None = None, grammar_override: str | None = None) -> dict:
     provider = os.getenv("AI_PROVIDER", "openai").lower()
     uid_tag = f"user_id={user_id} " if user_id else ""
-    grammar = grammar_override if grammar_override is not None else ", ".join(level.grammar)
+    grammar = grammar_override if grammar_override is not None else ", ".join(GRAMMARS_BY_LEVEL.get(level.level, [f"{level.cefr} level grammar"]))
     system_prompt = _load_prompt(
         "generate_scenario.txt",
         level=str(level.level), label=level.label, cefr=level.cefr,
@@ -94,7 +95,7 @@ async def get_conversation_reply(
 ) -> str:
     provider = os.getenv("AI_PROVIDER", "openai").lower()
     uid_tag = f"user_id={user_id} " if user_id else ""
-    grammar = grammar_override if grammar_override is not None else ", ".join(level.grammar)
+    grammar = grammar_override if grammar_override is not None else ", ".join(GRAMMARS_BY_LEVEL.get(level.level, [f"{level.cefr} level grammar"]))
     system_prompt = _load_prompt(
         "conversation.txt",
         level=str(level.level), label=level.label, cefr=level.cefr,
@@ -230,7 +231,7 @@ async def assess_conversation(
 ) -> dict:
     provider = os.getenv("AI_PROVIDER", "openai").lower()
     uid_tag = f"user_id={user_id} " if user_id else ""
-    grammar = grammar_override if grammar_override is not None else ", ".join(level.grammar)
+    grammar = grammar_override if grammar_override is not None else ", ".join(GRAMMARS_BY_LEVEL.get(level.level, [f"{level.cefr} level grammar"]))
     system_prompt = _load_prompt(
         "assess.txt",
         level=str(level.level), label=level.label, cefr=level.cefr,
