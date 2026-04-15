@@ -67,10 +67,10 @@ async def ws_endpoint(ws: WebSocket, user_id: str):
     # Restore or create game
     game = await _get_or_create_game(user_id)
 
-    # Send initial state
-    await ws.send_json({"type": "state", "game": game.get_state()})
-
     try:
+        # Send initial state
+        await ws.send_json({"type": "state", "game": game.get_state()})
+
         while True:
             msg = await ws.receive_json()
             mtype = msg.get("type", "")
@@ -144,8 +144,11 @@ async def _ai_turn(user_id: str, ws: WebSocket, game: PokerGame):
         ai = AIPlayer()
         _ai[user_id] = ai
 
-    # Notify frontend
-    await ws.send_json({"type": "ai_thinking"})
+    # Notify frontend — client may have already disconnected, so guard silently
+    try:
+        await ws.send_json({"type": "ai_thinking"})
+    except WebSocketDisconnect:
+        return
 
     # Natural delay
     await asyncio.sleep(random.uniform(0.7, 1.8))
@@ -165,7 +168,10 @@ async def _ai_turn(user_id: str, ws: WebSocket, game: PokerGame):
 
     state = game.apply_action("ai", action, raise_to=amount)
     await save_game(user_id, game.to_dict())
-    await ws.send_json({"type": "state", "game": state})
+    try:
+        await ws.send_json({"type": "state", "game": state})
+    except WebSocketDisconnect:
+        return
 
     if state.get("winner"):
         await _record_hand_stats(user_id, state)
