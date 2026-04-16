@@ -362,13 +362,13 @@ async def handle_start_conversation(callback: CallbackQuery, state: FSMContext) 
         await bot.send_voice(
             chat_id=callback.message.chat.id,
             voice=voice_file,
-            caption=f"🤖 {opening_line}",
+            caption="🎧",
             reply_markup=conversation_keyboard(),
         )
     except Exception:
         logger.exception("TTS failed for opening line")
         await callback.message.answer(
-            f"🤖 <i>{opening_line}</i>\n\n🎤 Отвечай голосовым сообщением.",
+            "⚠️ Не удалось озвучить сообщение. Попробуй нажать «End» и начать заново.",
             parse_mode=ParseMode.HTML,
             reply_markup=conversation_keyboard(),
         )
@@ -492,14 +492,12 @@ async def handle_voice_in_conversation(message: Message, state: FSMContext) -> N
         await bot.send_voice(
             chat_id=message.chat.id,
             voice=voice_file,
-            caption=f"🤖 {bot_reply}\n\n💬 {exchanges_left - 1} обменов осталось",
+            caption="🎧",
         )
     except Exception:
         logger.exception("TTS failed for bot reply")
         await message.answer(
-            f"🤖 <i>{bot_reply}</i>\n\n"
-            f"💬 {exchanges_left - 1} обменов осталось\n"
-            "🎤 Отвечай голосовым сообщением.",
+            "⚠️ Не удалось озвучить ответ. Попробуй отправить голосовое ещё раз.",
             parse_mode=ParseMode.HTML,
         )
 
