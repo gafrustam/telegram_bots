@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Rain Monitor Agent — Koh Samui
+Rain Monitor Agent — Kazan
 Runs every 5 minutes via systemd timer.
 Fetches hourly weather from open-meteo.com (free, no key),
 checks all upcoming slots (up to 2h ahead) for rain >= 60% probability,
 uses AI to compose a friendly Russian alert with exact start time,
 sends Telegram notification. Suppressed if currently raining or alerted within 2h.
+Light rain/drizzle (< MIN_PRECIPITATION_MM or drizzle wcode) is ignored.
 """
 
 import json
@@ -50,12 +51,13 @@ def _get_ai_client() -> OpenAI:
 CHAT_ID        = os.environ["RAIN_CHAT_ID"]
 STATE_FILE     = Path(__file__).parent / "rain_state.json"
 
-# Koh Samui, Thailand
-LAT, LON             = 9.5483459, 100.0277257
+# Kazan, Russia
+LAT, LON             = 55.7887, 49.1221
 _tz_name             = TimezoneFinder().timezone_at(lat=LAT, lng=LON) or "UTC"
 LOCAL_TZ             = ZoneInfo(_tz_name)
 MIN_ALERT_INTERVAL_H = 2.0   # don't alert more often than this
 RAIN_PROB_THRESHOLD   = 60    # % precipitation probability
+MIN_PRECIPITATION_MM  = 1.0   # ignore light rain/drizzle below this threshold
 
 
 # ── Weather ───────────────────────────────────────────────────────────────────
@@ -158,7 +160,7 @@ def compose_alert(slot: dict) -> str:
     start_time   = datetime.fromisoformat(slot["time"]).strftime("%H:%M")
 
     prompt = (
-        f"Напиши короткое предупреждение о дожде на Ко Самуи (Таиланд). "
+        f"Напиши короткое предупреждение о дожде в Казани (Россия). "
         f"Параметры: тип осадков={weather_type}, начало в {start_time} (через {minutes_away} мин), "
         f"вероятность={slot['prob_%']}%, интенсивность={slot['mm']} мм, температура={slot['temp_c']}°C. "
         f"Требования: 1-3 строки, русский язык, только текст и эмодзи (без HTML-тегов), "
@@ -218,9 +220,18 @@ def main() -> None:
                     current_slot["wcode"], current_slot["mm"])
         return
 
-    # Find the earliest upcoming slot (in_hours > 0.25) with rain >= threshold
+    # Find the earliest upcoming slot (in_hours > 0.25) with significant rain:
+    # - probability >= threshold
+    # - precipitation >= MIN_PRECIPITATION_MM (skip light rain/drizzle)
+    # - not just drizzle (wcode 51-57)
     rain_slot = next(
-        (s for s in forecast if s["in_hours"] > 0.25 and s["prob_%"] >= RAIN_PROB_THRESHOLD),
+        (
+            s for s in forecast
+            if s["in_hours"] > 0.25
+            and s["prob_%"] >= RAIN_PROB_THRESHOLD
+            and s["mm"] >= MIN_PRECIPITATION_MM
+            and not (51 <= s["wcode"] <= 57)
+        ),
         None,
     )
 
