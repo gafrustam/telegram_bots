@@ -32,7 +32,7 @@ log = logging.getLogger(__name__)
 TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
 ALLOWED_USER = "gafrustam"
 ADMIN_CHAT_ID = 138468116
-CLAUDE_PATH = "/home/ubuntu/.local/bin/claude"
+ANTIGRAVITY_PATH = "/home/ubuntu/.local/bin/agy"
 REPO_ROOT = "/home/ubuntu/telegram_bots"
 MAX_MSG_LEN = 4096
 CONTINUE_WORDS = {"закончи", "продолжи", "дальше"}
@@ -917,24 +917,20 @@ async def cmd_start(message: Message):
 @router.callback_query(F.data == "limits")
 async def cb_limits(callback: CallbackQuery):
     info_lines = []
-    cache_dir = Path.home() / ".claude"
+    cache_dir = Path.home() / ".antigravitycli"
     try:
-        cache_files = list(cache_dir.glob("statsig/cache_v2*"))
-        if cache_files:
-            info_lines.append(f"Найдено кэш-файлов: {len(cache_files)}")
-        settings = cache_dir / "settings.json"
-        if settings.exists():
-            info_lines.append("Конфигурация Claude: ✅")
+        if cache_dir.exists():
+            info_lines.append("Конфигурация Antigravity: ✅")
     except Exception:
         pass
 
     if not info_lines:
         text = (
-            "📊 Информация о лимитах появляется, когда Claude Code "
+            "📊 Информация о лимитах появляется, когда Antigravity "
             "сообщает о rate limit в ответе."
         )
     else:
-        text = "📊 Claude Code:\n" + "\n".join(info_lines)
+        text = "📊 Antigravity:\n" + "\n".join(info_lines)
 
     await callback.answer()
     await callback.message.answer(text)
@@ -1015,7 +1011,7 @@ async def handle_voice(message: Message):
     await status_msg.edit_text(f"🎙 <i>{text}</i>", parse_mode="HTML")
 
     # Now process transcribed text exactly like a text command
-    status_msg2 = await message.answer("⏳ Запускаю Claude Code...", reply_markup=STOP_KB)
+    status_msg2 = await message.answer("⏳ Запускаю Antigravity...", reply_markup=STOP_KB)
     stop_event = asyncio.Event()
     updater_task = asyncio.create_task(
         _update_status(status_msg2, start_time, stop_event)
@@ -1024,11 +1020,11 @@ async def handle_voice(message: Message):
     try:
         old_head = _get_head()
 
-        cmd = [CLAUDE_PATH, "-p", text, "--dangerously-skip-permissions", "--output-format", "text"]
+        cmd = [ANTIGRAVITY_PATH, "-p", text, "--dangerously-skip-permissions"]
         if text.lower() in CONTINUE_WORDS:
             cmd.append("--continue")
 
-        env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+        env = {k: v for k, v in os.environ.items() if k not in ("CLAUDECODE", "ANTIGRAVITY")}
 
         _proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -1101,7 +1097,7 @@ async def handle_photo(message: Message):
     caption = (message.caption or "").strip()
     start_time = time.time()
 
-    status_msg = await message.answer("⏳ Запускаю Claude Code...", reply_markup=STOP_KB)
+    status_msg = await message.answer("⏳ Запускаю Antigravity...", reply_markup=STOP_KB)
     stop_event = asyncio.Event()
     updater_task = asyncio.create_task(
         _update_status(status_msg, start_time, stop_event)
@@ -1122,8 +1118,8 @@ async def handle_photo(message: Message):
 
         old_head = _get_head()
 
-        cmd = [CLAUDE_PATH, "-p", text, "--dangerously-skip-permissions", "--output-format", "text"]
-        env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+        cmd = [ANTIGRAVITY_PATH, "-p", text, "--dangerously-skip-permissions"]
+        env = {k: v for k, v in os.environ.items() if k not in ("CLAUDECODE", "ANTIGRAVITY")}
 
         _proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -1202,7 +1198,7 @@ async def handle_document(message: Message):
     caption = (message.caption or "").strip()
     start_time = time.time()
 
-    status_msg = await message.answer("📎 Загружаю файл и запускаю Claude Code...", reply_markup=STOP_KB)
+    status_msg = await message.answer("📎 Загружаю файл и запускаю Antigravity...", reply_markup=STOP_KB)
     stop_event = asyncio.Event()
     updater_task = asyncio.create_task(
         _update_status(status_msg, start_time, stop_event)
@@ -1226,8 +1222,8 @@ async def handle_document(message: Message):
 
         old_head = _get_head()
 
-        cmd = [CLAUDE_PATH, "-p", text, "--dangerously-skip-permissions", "--output-format", "text"]
-        env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+        cmd = [ANTIGRAVITY_PATH, "-p", text, "--dangerously-skip-permissions"]
+        env = {k: v for k, v in os.environ.items() if k not in ("CLAUDECODE", "ANTIGRAVITY")}
 
         _proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -1300,7 +1296,7 @@ async def _execute_task(chat_id: int, text: str):
     _stop_requested = False
     start_time = time.time()
 
-    status_msg = await bot.send_message(chat_id, "⏳ Запускаю Claude Code...", reply_markup=STOP_KB)
+    status_msg = await bot.send_message(chat_id, "⏳ Запускаю Antigravity...", reply_markup=STOP_KB)
     stop_event = asyncio.Event()
     updater_task = asyncio.create_task(
         _update_status(status_msg, start_time, stop_event)
@@ -1309,11 +1305,11 @@ async def _execute_task(chat_id: int, text: str):
     try:
         old_head = _get_head()
 
-        cmd = [CLAUDE_PATH, "-p", text, "--dangerously-skip-permissions", "--output-format", "text"]
+        cmd = [ANTIGRAVITY_PATH, "-p", text, "--dangerously-skip-permissions"]
         if text.lower() in CONTINUE_WORDS:
             cmd.append("--continue")
 
-        env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+        env = {k: v for k, v in os.environ.items() if k not in ("CLAUDECODE", "ANTIGRAVITY")}
 
         _proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -1402,6 +1398,7 @@ async def handle_task(message: Message):
 
 async def main():
     log.info("Assistant bot starting...")
+    await bot.delete_webhook(drop_pending_updates=True)
     asyncio.create_task(_daily_stats_scheduler())
     await dp.start_polling(bot)
 
